@@ -66,23 +66,27 @@ When the installer finishes, it prints your onboarding URL.
 
 Run the same command again later to update CaddyUI.
 
-> Beta and dev builds may show `-dev` style app versions. That is expected.
+> Beta and dev builds may show `-beta`, `-dev`, or date-patch suffixes like `+18052026-1`. That is expected.
 
 ## What you get
 
 - Manage reverse proxies from the UI
 - Add, edit, enable, disable, and delete proxy entries
+- Keep advanced/raw Caddy entries visible in the main proxy dashboard, with raw editing when needed
 - Create and manage Caddy snippets/middlewares
+- Use a larger middleware workbench with templates, helpers, preview, duplicate, and copy-import actions
 - Monaco-powered editors for raw config and entries
 - Validate your config with `caddy validate`
 - Reload Caddy after changes
 - View logs from files and `journalctl`
+- Review a structured event log with actor tracking and notification deep-links
 - Built-in user authentication
 - Role-based access: `view`, `edit`, and `admin`
 - Security settings: trusted proxy hops, cookie mode, setup exposure, allowed origins
 - Config apply modes: file mode (write Caddyfile) or API mode (push via Caddy Admin API)
 - Onboarding with Caddyfile and log discovery
 - Self-updates from `stable`, `beta`, or `dev`
+- Date-based patch releases for fast fixes without bumping the base semver every time
 
 ## How it works
 
@@ -100,6 +104,26 @@ In API mode, CaddyUI exposes an authenticated Caddy API bridge under `/api/caddy
 - `GET|POST|PUT|PATCH|DELETE /api/caddy/id/:id[/{path}]`
 - `GET /api/caddy/pki/ca/:id`, `GET /api/caddy/pki/ca/:id/certificates`
 - `GET /api/caddy/reverse_proxy/upstreams`
+
+## Versioning and patches
+
+CaddyUI tracks a normal release version in `package.json` and an optional patch label in `release.json`.
+
+That means a build can look like:
+
+- `0.2.4-beta`
+- `0.2.4-dev`
+- `0.2.4-dev+18052026-1`
+
+Date patches use `DDMMYYYY-N`, where `N` is the patch number for that day.
+
+Use this when you want to ship a small fix on `beta` or `dev` without inventing a brand-new semver:
+
+```bash
+npm run release:patch
+```
+
+The updater UI recognizes these patch builds and will show the full display version instead of only the base semver.
 
 ## Looks like this
 
@@ -135,19 +159,19 @@ Notes:
 ## UI pages
 
 - **Proxies**  
-  Manage proxy entries with grouping, search, sorting, imports, logging, tags, and categories.
+  Manage proxy entries with grouping, search, sorting, imports, logging, tags, categories, and inline advanced-entry visibility.
 
 - **Middlewares**  
-  Create, edit, and delete reusable Caddy snippets.
+  Create, edit, duplicate, preview, and organize reusable Caddy snippets with templates and helper inserts.
 
 - **Configuration**  
   Edit the full raw config directly (from `Caddyfile` in file mode, or working config cache in API mode).
 
 - **Logs**  
-  View Caddy logs from configured files and `journalctl`.
+  View Caddy logs from configured files and `journalctl`, plus a structured event log for UI/API actions.
 
 - **Settings**  
-  Configure config mode (`file`/`api`), API URL/secret, paths, scans, users, passwords, update channel, and security options.
+  Configure config mode (`file`/`api`), API URL/secret, paths, scans, users, passwords, update channel, security options, and recovery actions.
 
 ## Reverse proxy example
 
