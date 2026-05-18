@@ -1909,8 +1909,8 @@ label {
   }
 
   .topbar {
-    height: 56px;
-    padding: 0 10px;
+    height: 52px;
+    padding: 0 8px;
   }
 
   .toast-stack {
@@ -1932,8 +1932,8 @@ label {
   }
 
   .top-actions button {
-    min-height: 32px;
-    padding: 6px 8px;
+    min-height: 30px;
+    padding: 5px 7px;
     font-size: 12px;
   }
 
@@ -1948,12 +1948,14 @@ label {
   .content,
   .content.wide {
     margin-left: 0;
-    padding: 68px 10px 84px;
+    padding: 62px 8px 76px;
   }
 
   .section-head {
     flex-direction: column;
     align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 10px;
   }
 
   .event-table-head {
@@ -1976,6 +1978,27 @@ label {
 
   .stats {
     grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .stats div {
+    padding: 10px 12px;
+  }
+
+  .stats b {
+    font-size: 22px;
+  }
+
+  input,
+  textarea,
+  select {
+    padding: 8px 10px;
+  }
+
+  button {
+    min-height: 34px;
+    padding: 7px 10px;
   }
 
   .proxy-table-head {
@@ -2008,10 +2031,40 @@ label {
 
   .proxy-row-main,
   .middleware-row {
-    gap: 6px;
-    padding: 10px 12px;
+    gap: 5px;
+    padding: 9px 10px;
   }
 
+  .quick-add,
+  .settings-form,
+  .middleware-builder,
+  .proxy-group,
+  .middleware-list {
+    border-radius: calc(var(--radius-lg) - 2px);
+  }
+
+  .quick-add,
+  .settings-form,
+  .middleware-builder {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .middleware-builder-main,
+  .middleware-side-card,
+  .proxy-edit-card,
+  .settings-card,
+  .settings-overview div {
+    padding: 14px;
+  }
+
+  .proxy-group-head {
+    padding: 8px 10px;
+  }
+
+  .proxy-group-head h3 {
+    font-size: 16px;
+  }
 
   .middleware-table-head {
     display: none;
@@ -2068,18 +2121,31 @@ label {
   .middleware-results span {
     flex: 1 1 120px;
     justify-content: center;
+    min-height: 28px;
+    padding: 4px 8px;
   }
 
   .edit-modal {
     width: 100%;
-    max-height: none;
-    min-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 76px - env(safe-area-inset-bottom));
+    min-height: 0;
     margin: auto 0;
+    padding: 12px;
   }
 
   .modal-backdrop {
     place-items: start stretch;
+    padding: 8px 8px calc(72px + env(safe-area-inset-bottom));
+  }
+
+  .modal-head {
+    position: sticky;
+    top: -12px;
+    z-index: 2;
+    margin: -12px -12px 0;
     padding: 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
   }
 
   .event-table th:nth-child(4),
@@ -2134,10 +2200,10 @@ label {
     min-width: 0;
     width: 100%;
     overflow-x: auto;
-    padding-top: 6px;
+    padding-top: 5px;
     border-top: 1px solid var(--line);
-    margin-top: 4px;
-    gap: 8px;
+    margin-top: 3px;
+    gap: 6px;
   }
 
   .row-actions button {
@@ -2163,6 +2229,20 @@ label {
     min-width: 0;
   }
 
+  .edit-modal > .toolbar {
+    position: sticky;
+    bottom: -12px;
+    z-index: 2;
+    margin: 0 -12px -12px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+  }
+
+  .edit-modal > .toolbar button {
+    flex: 1 1 0;
+  }
+
   .mobile-nav {
     position: fixed;
     left: 0;
@@ -2171,20 +2251,20 @@ label {
     z-index: 40;
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 6px;
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    gap: 4px;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);
     background: var(--surface);
   }
 
   .mobile-nav button {
-    min-height: 56px;
-    padding: 6px 4px;
+    min-height: 52px;
+    padding: 5px 3px;
     border-color: transparent;
     background: transparent;
     flex-direction: column;
-    gap: 4px;
-    font-size: 11px;
+    gap: 3px;
+    font-size: 10px;
   }
 
   .mobile-nav button.active {

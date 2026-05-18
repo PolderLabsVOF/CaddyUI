@@ -736,7 +736,7 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
                   canEdit={canEdit}
                   toggleBusy={pendingToggleLine === String(site.line)}
                   hostBadge={isStandardProxySite(site) ? '' : 'Advanced'}
-                  note={isStandardProxySite(site) ? '' : advancedSiteReason(site)}
+                  note=""
                   upstreamText={!isStandardProxySite(site) ? site.proxies.map((proxy) => proxy.upstreams.join(' ')).filter(Boolean).join(' | ') : ''}
                   importsText={!isStandardProxySite(site) ? siteImportNames(site).join(', ') : ''}
                   editLabel={!isStandardProxySite(site) ? 'Edit raw' : 'Edit'}
