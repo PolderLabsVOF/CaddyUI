@@ -1,9 +1,10 @@
 import React, { memo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, Menu, MessageSquare, Moon, ScrollText, ServerCog, Settings, Shield, SidebarClose, Sun } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, LayoutTemplate, Loader2, Menu, MessageSquare, Moon, ScrollText, ServerCog, Settings, Shield, SidebarClose, Sun } from 'lucide-react';
 import { updateSimpleProxy } from '../../server/caddyParser.js';
 
 export const pageItems = [
   ['proxies', ServerCog, 'Proxies'],
+  ['templates', LayoutTemplate, 'Templates'],
   ['middlewares', Layers3, 'Middlewares'],
   ['configuration', FileCode2, 'Configuration'],
   ['logs', ScrollText, 'Logs'],
@@ -14,11 +15,12 @@ export function Notice({ type = 'info', children }) {
   return <div className={`notice ${type}`}>{type === 'error' ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}<span>{children}</span></div>;
 }
 
-export function Shell({ children, page, setPage, collapsed, setCollapsed, user, onLogout, theme, setTheme, appInfo, onCheckUpdates, onRunUpdate, canUpdate, checkingUpdates, updating, canEdit, onValidateCaddy, onConfirmReloadCaddy, caddyBusy, appVersion, notifications = [], onDismissNotification, onNotificationAction, onClearNotifications, onOpenNotification }) {
+export function Shell({ children, page, setPage, collapsed, setCollapsed, user, onLogout, theme, setTheme, appInfo, onCheckUpdates, onRunUpdate, canUpdate, checkingUpdates, updating, canEdit, scopedEditor = false, onValidateCaddy, onConfirmReloadCaddy, caddyBusy, appVersion, notifications = [], onDismissNotification, onNotificationAction, onClearNotifications, onOpenNotification }) {
   const activeVersion = appInfo?.version || appInfo?.localVersion || appVersion;
   const targetVersion = appInfo?.availableVersion || appInfo?.remoteVersion || '';
   const shownVersion = updating && targetVersion ? targetVersion : activeVersion;
   const visibleNotificationCount = notifications.filter((notification) => !notification.closing).length;
+  const visiblePageItems = scopedEditor ? pageItems.filter(([id]) => id !== 'middlewares' && id !== 'configuration') : pageItems;
   const openFeedback = () => {
     window.location.href = 'https://github.com/DrB0rk/CaddyUI/issues/new/choose';
   };
@@ -118,7 +120,7 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
       )}
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
         <div>
-          {pageItems.map(([id, Icon, label]) => (
+          {visiblePageItems.map(([id, Icon, label]) => (
             <button key={id} className={page === id ? 'active' : ''} onClick={() => setPage(id)}>
               <Icon size={20} />
               <span>{label}</span>
@@ -152,7 +154,7 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
       </aside>
       <main className={`content ${collapsed ? 'wide' : ''}`}>{children}</main>
       <nav className="mobile-nav">
-        {pageItems.map(([id, Icon, label]) => (
+        {visiblePageItems.map(([id, Icon, label]) => (
           <button key={id} className={page === id ? 'active' : ''} onClick={() => setPage(id)}>
             <Icon size={18} />
             <span>{label}</span>

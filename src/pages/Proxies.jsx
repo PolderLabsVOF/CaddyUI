@@ -22,6 +22,11 @@ const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST
 
 const compareText = (a, b) => String(a || '').toLowerCase().localeCompare(String(b || '').toLowerCase());
 const compareBool = (a, b) => Number(Boolean(a)) - Number(Boolean(b));
+const defaultSectionSort = { key: 'host', dir: 'asc' };
+
+function proxySectionKey(viewMode, groupName) {
+  return `${viewMode}:${groupName}`;
+}
 
 function sortValue(site, key, health) {
   if (key === 'domain') return rootDomain(site.addresses?.[0]);
@@ -192,15 +197,30 @@ function advancedSiteReason(site) {
   return 'This proxy needs raw config editing.';
 }
 
-export default function Proxies({ config, refresh, setConfig, canEdit, theme, health, loading, api, onConfigChanged, onHealthPatch }) {
+export default function Proxies({
+  config,
+  refresh,
+  setConfig,
+  canEdit,
+  theme,
+  health,
+  loading,
+  api,
+  templates = [],
+  templateToApply = null,
+  onTemplateApplied,
+  onConfigChanged,
+  onHealthPatch,
+}) {
   const empty = { host: '', upstream: '', description: '', category: '', tags: '', imports: '', logMode: 'none', logPath: '' };
   const [form, setForm] = useState(empty);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [edit, setEdit] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [collapsedSections, setCollapsedSections] = useState({});
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('domain');
-  const [sort, setSort] = useState({ key: 'host', dir: 'asc' });
+  const [sectionSorts, setSectionSorts] = useState({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [pendingToggleLine, setPendingToggleLine] = useState('');
@@ -234,22 +254,20 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
   }, [query, sites]);
 
   const groupedEntries = useMemo(() => {
-    const sorted = [...filteredSites].sort((a, b) => sortSites(a, b, sort, health));
     const groups = new Map();
-    for (const site of sorted) {
+    for (const site of filteredSites) {
       const key = viewMode === 'category' ? (site.category || 'Uncategorized') : rootDomain(site.addresses?.[0]);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(site);
     }
-    const entries = [...groups.entries()];
-    const sortSectionsByKey = (viewMode === 'domain' && sort.key === 'domain') || (viewMode === 'category' && sort.key === 'category');
-    if (sortSectionsByKey) {
-      entries.sort((a, b) => compareText(a[0], b[0]) * (sort.dir === 'asc' ? 1 : -1));
-    } else {
-      entries.sort((a, b) => compareText(a[0], b[0]));
-    }
-    return entries;
-  }, [filteredSites, sort, health, viewMode]);
+    return [...groups.entries()]
+      .sort((a, b) => compareText(a[0], b[0]))
+      .map(([groupName, items]) => {
+        const sectionKey = proxySectionKey(viewMode, groupName);
+        const sectionSort = sectionSorts[sectionKey] || defaultSectionSort;
+        return [groupName, [...items].sort((a, b) => sortSites(a, b, sectionSort, health))];
+      });
+  }, [filteredSites, sectionSorts, health, viewMode]);
 
   useEffect(() => {
     const initial = Object.fromEntries(groupedEntries.map(([name]) => [name, 14]));
@@ -291,6 +309,41 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
     for (const site of sites) if (site.category) unique.add(site.category);
     return [...unique].sort((a, b) => compareText(a, b));
   }, [sites]);
+
+  const templateMap = useMemo(
+    () => new Map((templates || []).map((template) => [String(template.id || ''), template])),
+    [templates]
+  );
+
+  const applyTemplateToForm = (template) => {
+    if (!template) return;
+    const logging = normalizeLogging(template.logging || {});
+    setForm((current) => ({
+      ...current,
+      host: template.host || '',
+      upstream: template.upstream || '',
+      description: template.description || '',
+      category: template.category || '',
+      tags: (template.tags || []).join(', '),
+      imports: (template.imports || []).join(', '),
+      logMode: logging.mode || 'none',
+      logPath: logging.path || '',
+    }));
+  };
+
+  useEffect(() => {
+    if (!selectedTemplateId) return;
+    if (templateMap.has(selectedTemplateId)) return;
+    setSelectedTemplateId('');
+  }, [selectedTemplateId, templateMap]);
+
+  useEffect(() => {
+    if (!templateToApply?.id) return;
+    const template = templateMap.get(String(templateToApply.id)) || templateToApply;
+    applyTemplateToForm(template);
+    setSelectedTemplateId(String(template.id || ''));
+    onTemplateApplied?.();
+  }, [templateToApply?.nonce, templateToApply?.id, templateMap, onTemplateApplied]);
 
   const applyLocal = (content) => {
     setConfig({
@@ -510,11 +563,21 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
     }
   };
 
-  const toggleSort = (key) => {
-    setSort((current) => (current.key === key ? { key, dir: current.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+  const toggleSort = (sectionKey, key) => {
+    setSectionSorts((current) => {
+      const active = current[sectionKey] || defaultSectionSort;
+      return {
+        ...current,
+        [sectionKey]: active.key === key ? { key, dir: active.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
+      };
+    });
   };
 
-  const sortArrow = (key) => (sort.key !== key ? '' : sort.dir === 'asc' ? ' ▲' : ' ▼');
+  const sectionSortFor = (sectionKey) => sectionSorts[sectionKey] || defaultSectionSort;
+  const sortArrow = (sectionKey, key) => {
+    const active = sectionSortFor(sectionKey);
+    return active.key !== key ? '' : active.dir === 'asc' ? ' ▲' : ' ▼';
+  };
   const sectionLabel = viewMode === 'category' ? 'category' : 'domain';
 
   return (
@@ -557,6 +620,24 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
 
       {canEdit && (
         <form className="quick-add" onSubmit={add}>
+          <div className="proxy-template-picker">
+            <select value={selectedTemplateId} onChange={(e) => setSelectedTemplateId(e.target.value)}>
+              <option value="">Select template...</option>
+              {templates
+                .slice()
+                .sort((a, b) => compareText(a.name, b.name))
+                .map((template) => (
+                  <option key={template.id} value={template.id}>{template.name}</option>
+                ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => applyTemplateToForm(templateMap.get(selectedTemplateId))}
+              disabled={!selectedTemplateId}
+            >
+              <Wand2 size={16} />Apply template
+            </button>
+          </div>
           <input list="proxy-domain-suggestions" placeholder="new.example.com" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} />
           <datalist id="proxy-domain-suggestions">
             {domains.flatMap((domain) => [`caddyui.${domain}`, `app.${domain}`, domain]).map((host) => <option key={host} value={host} />)}
@@ -705,6 +786,7 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
       <div className="proxy-list">
         {groupedEntries.map(([groupName, items]) => {
           const sectionKey = `${viewMode}:${groupName}`;
+          const sectionSort = sectionSortFor(sectionKey);
           return (
             <details
               className="proxy-group"
@@ -720,12 +802,12 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
                 <span>{items.length} entries</span>
               </summary>
               <div className="proxy-table-head">
-                <button type="button" className={`table-sort ${sort.key === 'host' ? 'active' : ''}`} onClick={() => toggleSort('host')}>Host{sortArrow('host')}</button>
-                <button type="button" className={`table-sort ${sort.key === 'upstream' ? 'active' : ''}`} onClick={() => toggleSort('upstream')}>Upstream{sortArrow('upstream')}</button>
-                <button type="button" className={`table-sort ${sort.key === 'local' ? 'active' : ''}`} onClick={() => toggleSort('local')}>Local{sortArrow('local')}</button>
-                <button type="button" className={`table-sort ${sort.key === 'category' ? 'active' : ''}`} onClick={() => toggleSort('category')}>Category{sortArrow('category')}</button>
-                <button type="button" className={`table-sort ${sort.key === 'tags' ? 'active' : ''}`} onClick={() => toggleSort('tags')}>Tags{sortArrow('tags')}</button>
-                <button type="button" className={`table-sort ${sort.key === 'imports' ? 'active' : ''}`} onClick={() => toggleSort('imports')}>Imports{sortArrow('imports')}</button>
+                <button type="button" className={`table-sort ${sectionSort.key === 'host' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'host')}>Host{sortArrow(sectionKey, 'host')}</button>
+                <button type="button" className={`table-sort ${sectionSort.key === 'upstream' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'upstream')}>Upstream{sortArrow(sectionKey, 'upstream')}</button>
+                <button type="button" className={`table-sort ${sectionSort.key === 'local' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'local')}>Local{sortArrow(sectionKey, 'local')}</button>
+                <button type="button" className={`table-sort ${sectionSort.key === 'category' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'category')}>Category{sortArrow(sectionKey, 'category')}</button>
+                <button type="button" className={`table-sort ${sectionSort.key === 'tags' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'tags')}>Tags{sortArrow(sectionKey, 'tags')}</button>
+                <button type="button" className={`table-sort ${sectionSort.key === 'imports' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'imports')}>Imports{sortArrow(sectionKey, 'imports')}</button>
                 <span>Actions</span>
               </div>
               {items.slice(0, renderLimits[groupName] || 0).map((site) => (

@@ -5,6 +5,7 @@ import pkg from '../package.json';
 import releaseMeta from '../release.json';
 import './styles.css';
 import Proxies from './pages/Proxies.jsx';
+import Templates from './pages/Templates.jsx';
 import Middlewares from './pages/Middlewares.jsx';
 import Configuration from './pages/Configuration.jsx';
 import Logs from './pages/Logs.jsx';
@@ -40,6 +41,10 @@ const localSettings = {
   allowedOrigins: [],
   username: 'local',
   role: 'admin',
+  allowedDomains: [],
+  allowedCategories: [],
+  scopedEditor: false,
+  proxyTemplates: [],
 };
 
 const api = async (path, options = {}) => {
@@ -88,6 +93,8 @@ export default function App() {
   const [settings, setSettings] = useState(localTest ? localSettings : null);
   const [config, setConfig] = useState(localTest ? emptyConfig : null);
   const [health, setHealth] = useState(localTest ? {} : {});
+  const [templates, setTemplates] = useState([]);
+  const [templateToApply, setTemplateToApply] = useState(null);
   const [page, setPage] = useState('proxies');
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('caddyui-theme') || 'dark');
@@ -106,8 +113,14 @@ export default function App() {
   const role = settings?.role || '';
   const canEdit = canEditRole(role) || localTest;
   const canAdmin = canAdminRole(role) || localTest;
+  const scopedEditor = Boolean(settings?.scopedEditor && !canAdmin);
   const notificationTimers = useRef(new Map());
   const notificationRemovalTimers = useRef(new Map());
+
+  useEffect(() => {
+    if (!scopedEditor) return;
+    if (page === 'middlewares' || page === 'configuration') setPage('proxies');
+  }, [scopedEditor, page]);
 
   useEffect(() => () => {
     for (const timer of notificationTimers.current.values()) window.clearTimeout(timer);
@@ -223,6 +236,14 @@ export default function App() {
     try { const data = await api('/api/proxies/health'); setHealth(data.health || {}); } catch {}
   };
 
+  const refreshTemplates = async () => {
+    if (localTest) return;
+    try {
+      const data = await api('/api/templates');
+      setTemplates(data.templates || []);
+    } catch {}
+  };
+
   const patchHealth = (patch = {}) => {
     if (!patch || typeof patch !== 'object') return;
     setHealth((current) => ({ ...(current || {}), ...patch }));
@@ -256,6 +277,12 @@ export default function App() {
     }
     api('/api/status').then((s) => { setStatus(s); setSettings(s.settings); if (s.settings.configured) { refreshConfig(); refreshAppStatus(false); } }).catch((e) => setError(e.message));
   }, []);
+
+  useEffect(() => {
+    if (localTest) return;
+    if (!status?.authenticated || !settings?.configured) return;
+    refreshTemplates();
+  }, [status?.authenticated, settings?.configured]);
 
   const validateCaddyGlobal = async () => {
     if (!canEdit) return;
@@ -326,7 +353,7 @@ export default function App() {
   };
 
   if (!status) return <div className="loading"><Loader2 className="spin" /> Loading CaddyUI...</div>;
-  if (!localTest && (!status.authenticated || !settings?.configured)) return <AuthGate status={status} onReady={(data) => { setStatus((prev) => ({ ...prev, ...data, settings: data.settings, authenticated: true, discovered: data.discovered || prev?.discovered })); setSettings(data.settings); if (data.settings.configured) { refreshConfig(); refreshAppStatus(false); } }} api={api} />;
+  if (!localTest && (!status.authenticated || !settings?.configured)) return <AuthGate status={status} onReady={(data) => { setStatus((prev) => ({ ...prev, ...data, settings: data.settings, authenticated: true, discovered: data.discovered || prev?.discovered })); setSettings(data.settings); if (data.settings.configured) { refreshConfig(); refreshAppStatus(false); refreshTemplates(); } }} api={api} />;
 
   const logout = async () => { if (localTest) { location.reload(); return; } await api('/api/logout', { method: 'POST' }); location.reload(); };
   const checkUpdates = async () => {
@@ -451,6 +478,7 @@ export default function App() {
       checkingUpdates={checkingUpdates}
       updating={updating}
       canEdit={canEdit}
+      scopedEditor={scopedEditor}
       onValidateCaddy={validateCaddyGlobal}
       onConfirmReloadCaddy={() => setReloadConfirmOpen(true)}
       caddyBusy={caddyBusy}
@@ -488,8 +516,25 @@ export default function App() {
           health={health}
           loading={configLoading}
           api={api}
+          templates={templates}
+          templateToApply={templateToApply}
+          onTemplateApplied={() => setTemplateToApply(null)}
           onConfigChanged={notifyConfigChangedNeedsReload}
           onHealthPatch={patchHealth}
+        />
+      )}
+      {page === 'templates' && (
+        <Templates
+          api={api}
+          canEdit={canEdit}
+          templates={templates}
+          setTemplates={setTemplates}
+          config={config}
+          onUseTemplate={(template) => {
+            setTemplateToApply({ ...template, nonce: Date.now() });
+            setPage('proxies');
+          }}
+          notify={pushNotification}
         />
       )}
       {page === 'middlewares' && (

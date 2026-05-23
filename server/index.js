@@ -98,6 +98,10 @@ const UPDATE_BRANCH = {
 };
 const JWT_ALGORITHM = 'HS256';
 const COOKIE_MODE_VALUES = new Set(['auto', 'secure', 'insecure']);
+const TEMPLATE_LOG_MODES = new Set(['none', 'default', 'stdout', 'stderr', 'file']);
+const MAX_TEMPLATE_NAME_LENGTH = 80;
+const MAX_TEMPLATE_IMPORTS = 32;
+const MAX_TEMPLATE_TAGS = 32;
 let runtimeAllowedOrigins = new Set(ENV_ALLOWED_ORIGINS);
 let runtimeAllowRemoteSetup = ENV_ALLOW_REMOTE_SETUP;
 let runtimeSecureCookieMode = ENV_SECURE_COOKIE_MODE;
@@ -331,6 +335,8 @@ function normalizeUser(user, fallbackRole = 'view') {
     username: String(user.username || '').trim(),
     passwordHash: user.passwordHash || '',
     role: user.role || fallbackRole,
+    allowedDomains: normalizeDomainScopes(user.allowedDomains || []),
+    allowedCategories: normalizeCategoryScopes(user.allowedCategories || []),
   };
 }
 
@@ -355,6 +361,146 @@ function normalizeCookieMode(value, fallback = 'auto') {
 function normalizeAllowedOrigins(value) {
   const values = Array.isArray(value) ? value : String(value || '').split(/[\n,]/);
   return [...new Set(values.map((item) => normalizedOrigin(String(item || '').trim())).filter(Boolean))];
+}
+
+function normalizeDomainScope(value = '') {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+  if (!raw) return '';
+  if (raw.startsWith('*.')) {
+    const base = splitHostPort(raw.slice(2)).host
+      .replace(/\.$/, '')
+      .toLowerCase();
+    return base ? `*.${base}` : '';
+  }
+  return splitHostPort(raw).host.toLowerCase();
+}
+
+function normalizeCategoryScope(value = '') {
+  return normalizeProxyCategory(value).toLowerCase();
+}
+
+function normalizeDomainScopes(value = []) {
+  const values = Array.isArray(value) ? value : String(value || '').split(/[\n,]/);
+  return [...new Set(values.map((item) => normalizeDomainScope(item)).filter(Boolean))];
+}
+
+function normalizeCategoryScopes(value = []) {
+  const values = Array.isArray(value) ? value : String(value || '').split(/[\n,]/);
+  return [...new Set(values.map((item) => normalizeCategoryScope(item)).filter(Boolean))];
+}
+
+function normalizeTemplateName(value = '') {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_TEMPLATE_NAME_LENGTH);
+}
+
+function normalizeTemplateImports(value = []) {
+  const values = Array.isArray(value) ? value : String(value || '').split(/[\n,]/);
+  const seen = new Set();
+  const normalized = [];
+  for (const item of values) {
+    const name = String(item || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(name);
+    if (normalized.length >= MAX_TEMPLATE_IMPORTS) break;
+  }
+  return normalized;
+}
+
+function normalizeTemplateLogMode(value = '') {
+  const mode = String(value || '')
+    .trim()
+    .toLowerCase();
+  return TEMPLATE_LOG_MODES.has(mode) ? mode : 'none';
+}
+
+function normalizeTemplateLogPath(value = '') {
+  return String(value || '').trim();
+}
+
+function normalizeTemplateHost(value = '') {
+  return String(value || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/.*$/, '');
+}
+
+function normalizeTemplateUpstream(value = '') {
+  return String(value || '').trim();
+}
+
+function normalizeTemplateId(value = '', fallback = '') {
+  const cleaned = String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9._:-]/g, '');
+  if (cleaned) return cleaned;
+  return String(fallback || '').trim();
+}
+
+function normalizeTemplateTimestamps(template = {}, existing = null, touch = false) {
+  const createdAt = Number(existing?.createdAt || template?.createdAt || Date.now());
+  const fallbackUpdatedAt = existing?.updatedAt || template?.updatedAt || createdAt;
+  const updatedAt = touch ? Date.now() : Number(fallbackUpdatedAt);
+  return {
+    createdAt: Number.isFinite(createdAt) && createdAt > 0 ? Math.floor(createdAt) : Date.now(),
+    updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? Math.floor(updatedAt) : Date.now(),
+  };
+}
+
+function normalizeProxyTemplate(template = {}, options = {}) {
+  const fallbackId = options?.fallbackId || '';
+  const existing = options?.existing || null;
+  const touch = Boolean(options?.touch);
+  const id = normalizeTemplateId(template.id, normalizeTemplateId(existing?.id, fallbackId));
+  const loggingMode = normalizeTemplateLogMode(template?.logging?.mode || existing?.logging?.mode || 'none');
+  const loggingPath = loggingMode === 'file'
+    ? normalizeTemplateLogPath(template?.logging?.path || existing?.logging?.path || '')
+    : '';
+  const { createdAt, updatedAt } = normalizeTemplateTimestamps(template, existing, touch);
+  return {
+    id,
+    name: normalizeTemplateName(template.name || existing?.name || ''),
+    description: normalizeProxyDescription(template.description || existing?.description || ''),
+    host: normalizeTemplateHost(template.host || existing?.host || ''),
+    upstream: normalizeTemplateUpstream(template.upstream || existing?.upstream || ''),
+    category: normalizeProxyCategory(template.category || existing?.category || ''),
+    tags: normalizeProxyTags(template.tags ?? existing?.tags ?? []).slice(0, MAX_TEMPLATE_TAGS),
+    imports: normalizeTemplateImports(template.imports ?? existing?.imports ?? []),
+    logging: {
+      mode: loggingMode,
+      path: loggingPath,
+    },
+    createdAt,
+    updatedAt,
+  };
+}
+
+function normalizeProxyTemplates(value = []) {
+  const items = Array.isArray(value) ? value : [];
+  const usedIds = new Set();
+  const normalized = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const template = normalizeProxyTemplate(items[index], { fallbackId: `template-${index + 1}` });
+    if (!template.id || !template.name) continue;
+    let uniqueId = template.id;
+    let suffix = 2;
+    while (usedIds.has(uniqueId)) {
+      uniqueId = `${template.id}-${suffix}`;
+      suffix += 1;
+    }
+    usedIds.add(uniqueId);
+    normalized.push({ ...template, id: uniqueId });
+  }
+  return normalized;
 }
 
 function normalizeTrustProxyHops(value, fallback = 0) {
@@ -382,6 +528,25 @@ function normalizeApiUrl(value, fallback = '') {
   const normalized = String(value ?? fallback ?? '').trim();
   if (!normalized) return '';
   return normalized.replace(/\/+$/, '');
+}
+
+function caddyApiOriginCandidates(baseUrl = '') {
+  try {
+    const parsed = new URL(baseUrl);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return [];
+    const host = String(parsed.hostname || '').toLowerCase();
+    const portSuffix = parsed.port ? `:${parsed.port}` : '';
+    const alternatives = [parsed.origin];
+    if (host === '127.0.0.1') alternatives.push(`${parsed.protocol}//localhost${portSuffix}`);
+    if (host === 'localhost') alternatives.push(`${parsed.protocol}//127.0.0.1${portSuffix}`);
+    if (host === '::1' || host === '[::1]') {
+      alternatives.push(`${parsed.protocol}//localhost${portSuffix}`);
+      alternatives.push(`${parsed.protocol}//127.0.0.1${portSuffix}`);
+    }
+    return [...new Set(alternatives.filter(Boolean))];
+  } catch {
+    return [];
+  }
 }
 
 function applyRuntimeSecurity(settings) {
@@ -414,6 +579,7 @@ function normalizeSettings(settings) {
     allowRemoteSetup: normalizeBoolean(base.allowRemoteSetup, ENV_ALLOW_REMOTE_SETUP),
     secureCookieMode: normalizeCookieMode(base.secureCookieMode, ENV_SECURE_COOKIE_MODE),
     allowedOrigins: normalizeAllowedOrigins(base.allowedOrigins ?? ENV_ALLOWED_ORIGINS),
+    proxyTemplates: normalizeProxyTemplates(base.proxyTemplates || []),
     users,
   };
 }
@@ -430,7 +596,20 @@ function currentUserRecord(settings, username) {
 }
 
 function exposeUser(user) {
-  return user ? { username: user.username, role: user.role } : null;
+  return user ? {
+    username: user.username,
+    role: user.role,
+    allowedDomains: normalizeDomainScopes(user.allowedDomains || []),
+    allowedCategories: normalizeCategoryScopes(user.allowedCategories || []),
+  } : null;
+}
+
+function userHasScopedEditRestrictions(user) {
+  return Boolean(
+    user &&
+      user.role === 'edit' &&
+      ((user.allowedDomains && user.allowedDomains.length > 0) || (user.allowedCategories && user.allowedCategories.length > 0))
+  );
 }
 
 function hasPermission(role, required) {
@@ -444,6 +623,50 @@ function requirePermission(required) {
     }
     return next();
   };
+}
+
+function requireUnscopedEditPermission() {
+  return (req, res, next) => {
+    if (!req.user || !hasPermission(req.user.role, 'edit')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (userHasScopedEditRestrictions(req.user)) {
+      return res.status(403).json({
+        error: 'Forbidden: scoped editor accounts cannot use this action. Edit proxies within allowed domains/categories only.',
+      });
+    }
+    return next();
+  };
+}
+
+function domainScopeMatches(host = '', scope = '') {
+  const normalizedHost = normalizeDomainScope(host);
+  const normalizedScope = normalizeDomainScope(scope);
+  if (!normalizedHost || !normalizedScope) return false;
+  if (normalizedScope.startsWith('*.')) {
+    const base = normalizedScope.slice(2);
+    return normalizedHost.endsWith(`.${base}`);
+  }
+  return normalizedHost === normalizedScope;
+}
+
+function canUserEditProxyTarget(user, { host = '', category = '' } = {}) {
+  if (!user || user.role === 'admin' || !hasPermission(user.role, 'edit')) return true;
+  if (!userHasScopedEditRestrictions(user)) return true;
+  const allowedDomains = normalizeDomainScopes(user.allowedDomains || []);
+  const allowedCategories = normalizeCategoryScopes(user.allowedCategories || []);
+  const normalizedHost = normalizeDomainScope(host);
+  const normalizedCategory = normalizeCategoryScope(category);
+  const domainAllowed = !allowedDomains.length || (normalizedHost && allowedDomains.some((scope) => domainScopeMatches(normalizedHost, scope)));
+  const categoryAllowed = !allowedCategories.length || (normalizedCategory && allowedCategories.includes(normalizedCategory));
+  return domainAllowed && categoryAllowed;
+}
+
+function enforceProxyEditScope(req, res, target = {}) {
+  if (canUserEditProxyTarget(req.user, target)) return true;
+  return res.status(403).json({
+    error: 'Forbidden: this user can only edit proxies in allowed domains/categories.',
+  });
 }
 
 function setupTokenRequired(settings) {
@@ -483,6 +706,7 @@ async function saveSettings(settings) {
 function publicSettings(settings, currentUsername = '') {
   const normalized = normalizeSettings(settings);
   const currentUser = currentUserRecord(normalized, currentUsername);
+  const scopeActive = userHasScopedEditRestrictions(currentUser);
   return {
     userConfigured: normalized.users.length > 0,
     caddyConfigured: Boolean(normalized.configured && caddyConfigured(normalized)),
@@ -500,12 +724,16 @@ function publicSettings(settings, currentUsername = '') {
     allowedOrigins: normalized.allowedOrigins || [],
     username: currentUser?.username || '',
     role: currentUser?.role || '',
+    allowedDomains: currentUser?.allowedDomains || [],
+    allowedCategories: currentUser?.allowedCategories || [],
+    scopedEditor: scopeActive,
   };
 }
 
 function statusSettings(settings, authenticated, currentUsername = '') {
   const normalized = normalizeSettings(settings);
   const currentUser = currentUserRecord(normalized, currentUsername);
+  const scopeActive = userHasScopedEditRestrictions(currentUser);
   const base = {
     userConfigured: normalized.users.length > 0,
     caddyConfigured: Boolean(normalized.configured && caddyConfigured(normalized)),
@@ -513,6 +741,9 @@ function statusSettings(settings, authenticated, currentUsername = '') {
     setupTokenRequired: setupTokenRequired(normalized),
     username: authenticated ? currentUser?.username || '' : '',
     role: authenticated ? currentUser?.role || '' : '',
+    allowedDomains: authenticated ? currentUser?.allowedDomains || [] : [],
+    allowedCategories: authenticated ? currentUser?.allowedCategories || [] : [],
+    scopedEditor: authenticated ? scopeActive : false,
   };
   if (!authenticated) return { ...base, caddyfilePath: '', caddyApiUrl: '', configMode: DEFAULT_CONFIG_MODE, logPaths: [] };
   return {
@@ -763,19 +994,35 @@ async function requestCaddyApi(settings, endpoint, options = {}) {
   const base = normalizeApiUrl(normalized.caddyApiUrl, DEFAULT_CADDY_API_URL);
   if (!base) throw new Error('Caddy API URL is not configured.');
   const url = `${base}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-  const headers = { ...(options.headers || {}) };
-  try {
-    if (!headers.Origin) headers.Origin = new URL(base).origin;
-  } catch {}
+  const baseHeaders = { ...(options.headers || {}) };
+  const explicitOrigin = String(baseHeaders.Origin || baseHeaders.origin || '').trim();
   const authValue = caddyApiAuthorizationValue(normalized.caddyApiToken);
-  if (authValue) headers.Authorization = authValue;
-  const response = await fetch(url, {
+  if (authValue) baseHeaders.Authorization = authValue;
+
+  const requestOnce = async (headers) => fetch(url, {
     method: options.method || 'GET',
     headers,
     body: options.body,
     signal: AbortSignal.timeout(options.timeoutMs || 6000),
   });
-  return response;
+
+  if (explicitOrigin) return requestOnce(baseHeaders);
+
+  const originCandidates = caddyApiOriginCandidates(base);
+  if (!originCandidates.length) return requestOnce(baseHeaders);
+
+  let lastOriginDeniedResponse = null;
+  for (const origin of originCandidates) {
+    const response = await requestOnce({ ...baseHeaders, Origin: origin });
+    if (response.status !== 403) return response;
+    let reason = '';
+    try {
+      reason = await response.clone().text();
+    } catch {}
+    if (!/client is not allowed to access from origin/i.test(reason)) return response;
+    lastOriginDeniedResponse = response;
+  }
+  return lastOriginDeniedResponse || requestOnce(baseHeaders);
 }
 
 async function testCaddyApiConnection(settingsLike = {}, overrides = {}) {
@@ -1447,7 +1694,7 @@ app.post('/api/logout', requireTrustedOrigin, async (req, res) => {
   res.json({ ok: true, event });
 });
 
-app.post('/api/caddy/load', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
+app.post('/api/caddy/load', requireTrustedOrigin, auth, requirePermission('edit'), requireUnscopedEditPermission(), async (req, res) => {
   try {
     const settings = await loadSettings();
     const contentInput = req.body?.content;
@@ -1561,7 +1808,7 @@ app.get(caddyConfigRoutes, auth, requirePermission('view'), async (req, res) => 
 });
 
 for (const method of ['post', 'put', 'patch', 'delete']) {
-  app[method](caddyConfigRoutes, requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
+  app[method](caddyConfigRoutes, requireTrustedOrigin, auth, requirePermission('edit'), requireUnscopedEditPermission(), async (req, res) => {
     try {
       const settings = await loadSettings();
       const scope = caddyPathPart(req.params.path || req.query.path || '');
@@ -1613,7 +1860,7 @@ app.get(caddyIdRoutes, auth, requirePermission('view'), async (req, res) => {
 });
 
 for (const method of ['post', 'put', 'patch', 'delete']) {
-  app[method](caddyIdRoutes, requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
+  app[method](caddyIdRoutes, requireTrustedOrigin, auth, requirePermission('edit'), requireUnscopedEditPermission(), async (req, res) => {
     try {
       const settings = await loadSettings();
       const id = caddyPathPart(req.params.id || req.query.id || '');
@@ -1716,7 +1963,7 @@ app.get('/api/config', auth, requirePermission('view'), async (req, res) => {
   }
 });
 
-app.post('/api/config', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
+app.post('/api/config', requireTrustedOrigin, auth, requirePermission('edit'), requireUnscopedEditPermission(), async (req, res) => {
   try {
     const settings = await loadSettings();
     const { content, validate = true } = req.body || {};
@@ -1878,6 +2125,7 @@ app.post('/api/config/reload', requireTrustedOrigin, auth, requirePermission('ed
 
 app.post('/api/proxies', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
   try {
+    if (enforceProxyEditScope(req, res, { host: req.body?.host, category: req.body?.category }) !== true) return;
     const { settings, content } = await readWorkingConfig();
     const next = appendSimpleProxy(content, req.body || {});
     const validation = await validateConfigForSettings(settings, next);
@@ -1908,8 +2156,11 @@ app.post('/api/proxies', requireTrustedOrigin, auth, requirePermission('edit'), 
 app.put('/api/proxies/:line', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
   try {
     const { settings, content } = await readWorkingConfig();
-    const previousParsed = await parseConfigCached(content);
+    const previousParsed = await parseConfigWithMeta(content);
     const previousSite = previousParsed.sites.find((site) => String(site.line) === String(req.params.line));
+    if (!previousSite) return res.status(404).json({ error: 'Proxy not found.' });
+    if (enforceProxyEditScope(req, res, { host: previousSite.addresses?.[0] || '', category: previousSite.category || '' }) !== true) return;
+    if (enforceProxyEditScope(req, res, { host: req.body?.host, category: req.body?.category }) !== true) return;
     const previousMetaKey = proxyMetaKeyFromSite(previousSite);
     const next = updateSimpleProxy(content, { ...req.body, siteLine: req.params.line });
     const validation = await validateConfigForSettings(settings, next);
@@ -1945,8 +2196,10 @@ app.put('/api/proxies/:line', requireTrustedOrigin, auth, requirePermission('edi
 app.delete('/api/proxies/:line', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
   try {
     const { settings, content } = await readWorkingConfig();
-    const previousParsed = await parseConfigCached(content);
+    const previousParsed = await parseConfigWithMeta(content);
     const previousSite = previousParsed.sites.find((site) => String(site.line) === String(req.params.line));
+    if (!previousSite) return res.status(404).json({ error: 'Proxy not found.' });
+    if (enforceProxyEditScope(req, res, { host: previousSite.addresses?.[0] || '', category: previousSite.category || '' }) !== true) return;
     const next = deleteBlockAtLine(content, req.params.line);
     const validation = await validateConfigForSettings(settings, next);
     if (!validation.ok && !validation.unavailable) {
@@ -1975,6 +2228,10 @@ app.delete('/api/proxies/:line', requireTrustedOrigin, auth, requirePermission('
 app.post('/api/proxies/:line/disabled', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
   try {
     const { settings, content } = await readWorkingConfig();
+    const currentParsed = await parseConfigWithMeta(content);
+    const currentSite = currentParsed.sites.find((site) => String(site.line) === String(req.params.line));
+    if (!currentSite) return res.status(404).json({ error: 'Proxy not found.' });
+    if (enforceProxyEditScope(req, res, { host: currentSite.addresses?.[0] || '', category: currentSite.category || '' }) !== true) return;
     const disabled = req.body?.disabled !== false;
     const next = setProxyDisabled(content, { siteLine: req.params.line, disabled });
     const validation = await validateConfigForSettings(settings, next);
@@ -1999,7 +2256,7 @@ app.post('/api/proxies/:line/disabled', requireTrustedOrigin, auth, requirePermi
   }
 });
 
-app.post('/api/middlewares', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
+app.post('/api/middlewares', requireTrustedOrigin, auth, requirePermission('edit'), requireUnscopedEditPermission(), async (req, res) => {
   try {
     const { settings, content } = await readWorkingConfig();
     const next = appendSnippet(content, req.body || {});
@@ -2023,7 +2280,7 @@ app.post('/api/middlewares', requireTrustedOrigin, auth, requirePermission('edit
   }
 });
 
-app.put('/api/middlewares/:line', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
+app.put('/api/middlewares/:line', requireTrustedOrigin, auth, requirePermission('edit'), requireUnscopedEditPermission(), async (req, res) => {
   try {
     const { settings, content } = await readWorkingConfig();
     const next = updateSnippet(content, { ...req.body, line: req.params.line });
@@ -2047,7 +2304,7 @@ app.put('/api/middlewares/:line', requireTrustedOrigin, auth, requirePermission(
   }
 });
 
-app.delete('/api/middlewares/:line', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
+app.delete('/api/middlewares/:line', requireTrustedOrigin, auth, requirePermission('edit'), requireUnscopedEditPermission(), async (req, res) => {
   try {
     const { settings, content } = await readWorkingConfig();
     const previousParsed = await parseConfigCached(content);
@@ -2311,6 +2568,112 @@ app.put('/api/settings/update-channel', requireTrustedOrigin, auth, requirePermi
   res.json({ settings: publicSettings(next, req.user.username), event });
 });
 
+app.get('/api/templates', auth, requirePermission('view'), async (_req, res) => {
+  const settings = await loadSettings();
+  res.json({ templates: normalizeSettings(settings).proxyTemplates || [] });
+});
+
+app.post('/api/templates', requireTrustedOrigin, auth, requirePermission('edit'), requireRateLimit('create-template', 24, 15 * 60 * 1000), async (req, res) => {
+  const settings = await loadSettings();
+  const normalized = normalizeSettings(settings);
+  const template = normalizeProxyTemplate(req.body || {}, { fallbackId: randomUUID(), touch: true });
+  if (!template.name) {
+    return res.status(400).json({ error: 'Template name is required.' });
+  }
+  if (
+    userHasScopedEditRestrictions(req.user) &&
+    (template.host || template.category) &&
+    !canUserEditProxyTarget(req.user, { host: template.host, category: template.category })
+  ) {
+    return res.status(403).json({ error: 'Forbidden: this template is outside allowed domains/categories.' });
+  }
+  normalized.proxyTemplates = [...(normalized.proxyTemplates || []), template].slice(0, 300);
+  await saveSettings(normalized);
+  const event = await recordEvent(req, {
+    kind: 'template',
+    action: 'create',
+    targetType: 'template',
+    targetId: template.id,
+    message: `Created template ${template.name}.`,
+    details: {
+      templateId: template.id,
+      name: template.name,
+      host: template.host,
+      category: template.category,
+    },
+  });
+  return res.json({ templates: normalized.proxyTemplates, event });
+});
+
+app.put('/api/templates/:templateId', requireTrustedOrigin, auth, requirePermission('edit'), requireRateLimit('update-template', 40, 15 * 60 * 1000), async (req, res) => {
+  const settings = await loadSettings();
+  const normalized = normalizeSettings(settings);
+  const templates = [...(normalized.proxyTemplates || [])];
+  const index = templates.findIndex((item) => item.id === req.params.templateId);
+  if (index < 0) return res.status(404).json({ error: 'Template not found.' });
+  const current = templates[index];
+  const updated = normalizeProxyTemplate(req.body || {}, { existing: current, fallbackId: current.id, touch: true });
+  updated.id = current.id;
+  if (!updated.name) {
+    return res.status(400).json({ error: 'Template name is required.' });
+  }
+  if (
+    userHasScopedEditRestrictions(req.user) &&
+    (updated.host || updated.category) &&
+    !canUserEditProxyTarget(req.user, { host: updated.host, category: updated.category })
+  ) {
+    return res.status(403).json({ error: 'Forbidden: this template is outside allowed domains/categories.' });
+  }
+  templates[index] = updated;
+  normalized.proxyTemplates = templates;
+  await saveSettings(normalized);
+  const event = await recordEvent(req, {
+    kind: 'template',
+    action: 'update',
+    targetType: 'template',
+    targetId: updated.id,
+    message: `Updated template ${updated.name}.`,
+    details: {
+      templateId: updated.id,
+      name: updated.name,
+      host: updated.host,
+      category: updated.category,
+    },
+  });
+  return res.json({ templates, event });
+});
+
+app.delete('/api/templates/:templateId', requireTrustedOrigin, auth, requirePermission('edit'), requireRateLimit('delete-template', 24, 15 * 60 * 1000), async (req, res) => {
+  const settings = await loadSettings();
+  const normalized = normalizeSettings(settings);
+  const templates = [...(normalized.proxyTemplates || [])];
+  const index = templates.findIndex((item) => item.id === req.params.templateId);
+  if (index < 0) return res.status(404).json({ error: 'Template not found.' });
+  const target = templates[index];
+  if (
+    userHasScopedEditRestrictions(req.user) &&
+    (target.host || target.category) &&
+    !canUserEditProxyTarget(req.user, { host: target.host, category: target.category })
+  ) {
+    return res.status(403).json({ error: 'Forbidden: this template is outside allowed domains/categories.' });
+  }
+  templates.splice(index, 1);
+  normalized.proxyTemplates = templates;
+  await saveSettings(normalized);
+  const event = await recordEvent(req, {
+    kind: 'template',
+    action: 'delete',
+    targetType: 'template',
+    targetId: target.id,
+    message: `Deleted template ${target.name}.`,
+    details: {
+      templateId: target.id,
+      name: target.name,
+    },
+  });
+  return res.json({ templates, event });
+});
+
 app.get('/api/users', auth, requirePermission('admin'), async (_req, res) => {
   const settings = await loadSettings();
   res.json({ users: normalizeSettings(settings).users.map(exposeUser) });
@@ -2319,7 +2682,7 @@ app.get('/api/users', auth, requirePermission('admin'), async (_req, res) => {
 app.post('/api/users', requireTrustedOrigin, auth, requirePermission('admin'), requireRateLimit('create-user', 12, 15 * 60 * 1000), async (req, res) => {
   const settings = await loadSettings();
   const normalized = normalizeSettings(settings);
-  const { username, password, role } = req.body || {};
+  const { username, password, role, allowedDomains = [], allowedCategories = [] } = req.body || {};
   if (!validUsername(username) || !validPassword(password)) {
     return res.status(400).json({ error: `Username format is invalid or password must be 8-${MAX_PASSWORD_LENGTH} characters.` });
   }
@@ -2334,6 +2697,8 @@ app.post('/api/users', requireTrustedOrigin, auth, requirePermission('admin'), r
     username: String(username).trim(),
     passwordHash: await bcrypt.hash(password, 12),
     role,
+    allowedDomains: normalizeDomainScopes(allowedDomains),
+    allowedCategories: normalizeCategoryScopes(allowedCategories),
   });
   await saveSettings(normalized);
   const event = await recordEvent(req, {
@@ -2342,7 +2707,12 @@ app.post('/api/users', requireTrustedOrigin, auth, requirePermission('admin'), r
     targetType: 'user',
     targetId: String(username).trim(),
     message: `Created user ${String(username).trim()} with role ${role}.`,
-    details: { username: String(username).trim(), role },
+    details: {
+      username: String(username).trim(),
+      role,
+      allowedDomains: normalizeDomainScopes(allowedDomains),
+      allowedCategories: normalizeCategoryScopes(allowedCategories),
+    },
   });
   res.json({ users: normalized.users.map(exposeUser), event });
 });
@@ -2371,6 +2741,13 @@ app.put('/api/users/:username', requireTrustedOrigin, auth, requirePermission('a
     user.passwordHash = await bcrypt.hash(password, 12);
   }
 
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'allowedDomains')) {
+    user.allowedDomains = normalizeDomainScopes(req.body?.allowedDomains || []);
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'allowedCategories')) {
+    user.allowedCategories = normalizeCategoryScopes(req.body?.allowedCategories || []);
+  }
+
   await saveSettings(normalized);
   const event = await recordEvent(req, {
     kind: 'user',
@@ -2378,7 +2755,13 @@ app.put('/api/users/:username', requireTrustedOrigin, auth, requirePermission('a
     targetType: 'user',
     targetId: user.username,
     message: `Updated user ${user.username}.`,
-    details: { username: user.username, role: user.role, passwordChanged: Boolean(password) },
+    details: {
+      username: user.username,
+      role: user.role,
+      passwordChanged: Boolean(password),
+      allowedDomains: user.allowedDomains || [],
+      allowedCategories: user.allowedCategories || [],
+    },
   });
   res.json({ users: normalized.users.map(exposeUser), event });
 });

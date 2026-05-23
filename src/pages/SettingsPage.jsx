@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Save, Trash2, UserPlus, UsersRound } from 'lucide-react';
 import { Notice, TypedConfirmModal } from '../components/common.jsx';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
@@ -10,6 +11,14 @@ const sectionItems = [
   ['updates', 'Updates'],
   ['danger', 'Danger'],
 ];
+
+function scopeText(values = []) {
+  return Array.isArray(values) ? values.join('\n') : '';
+}
+
+function parseScopeText(value = '') {
+  return [...new Set(String(value || '').split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
+}
 
 export default function SettingsPage({ settings, setSettings, canEdit, canAdmin, api, notify, refreshConfig, setStatus }) {
   const [activeSection, setActiveSection] = useState('connection');
@@ -31,7 +40,11 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
   const [discovered, setDiscovered] = useState({ caddyfiles: [], logfiles: [] });
   const [scanning, setScanning] = useState(false);
   const [testingApi, setTestingApi] = useState(false);
-  const [userForm, setUserForm] = useState({ username: '', password: '', role: 'view' });
+  const [userForm, setUserForm] = useState({ username: '', password: '', role: 'view', allowedDomains: '', allowedCategories: '' });
+  const [userAccessDrafts, setUserAccessDrafts] = useState({});
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [userListOpen, setUserListOpen] = useState(true);
+  const [expandedUsers, setExpandedUsers] = useState({});
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [dangerModal, setDangerModal] = useState({ open: false, kind: '', value: '' });
   const [dangerBusy, setDangerBusy] = useState(false);
@@ -65,6 +78,29 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
       .then((res) => setUsers(res.users))
       .catch(() => {});
   }, [canAdmin]);
+
+  useEffect(() => {
+    const nextDrafts = {};
+    users.forEach((user) => {
+      nextDrafts[user.username] = {
+        allowedDomains: scopeText(user.allowedDomains || []),
+        allowedCategories: scopeText(user.allowedCategories || []),
+      };
+    });
+    setUserAccessDrafts(nextDrafts);
+  }, [users]);
+
+  useEffect(() => {
+    setExpandedUsers((current) => {
+      const next = {};
+      users.forEach((user) => {
+        if (Object.prototype.hasOwnProperty.call(current, user.username)) {
+          next[user.username] = current[user.username];
+        } else next[user.username] = false;
+      });
+      return next;
+    });
+  }, [users, settings.username]);
 
   const setNotice = (text = '', eventId = '') => {
     setMsg(text);
@@ -188,9 +224,18 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
   const addUser = async (e) => {
     e.preventDefault();
     try {
-      const res = await api('/api/users', { method: 'POST', body: JSON.stringify(userForm) });
+      const res = await api('/api/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: userForm.username,
+          password: userForm.password,
+          role: userForm.role,
+          allowedDomains: parseScopeText(userForm.allowedDomains),
+          allowedCategories: parseScopeText(userForm.allowedCategories),
+        }),
+      });
       setUsers(res.users);
-      setUserForm({ username: '', password: '', role: 'view' });
+      setUserForm({ username: '', password: '', role: 'view', allowedDomains: '', allowedCategories: '' });
       setNotice('User added.', res.event?.id || '');
     } catch (err) {
       setMsg(err.message);
@@ -210,6 +255,23 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     }
   };
 
+  const saveUserAccess = async (username) => {
+    const draft = userAccessDrafts[username] || { allowedDomains: '', allowedCategories: '' };
+    try {
+      const res = await api(`/api/users/${encodeURIComponent(username)}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          allowedDomains: parseScopeText(draft.allowedDomains),
+          allowedCategories: parseScopeText(draft.allowedCategories),
+        }),
+      });
+      setUsers(res.users);
+      setNotice(`Saved access scope for ${username}.`, res.event?.id || '');
+    } catch (err) {
+      setMsg(err.message);
+    }
+  };
+
   const removeUser = async (username) => {
     try {
       const res = await api(`/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
@@ -218,6 +280,10 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     } catch (err) {
       setMsg(err.message);
     }
+  };
+
+  const setAllUsersExpanded = (expanded) => {
+    setExpandedUsers(Object.fromEntries(users.map((user) => [user.username, expanded])));
   };
 
   const changePassword = async (e) => {
@@ -452,34 +518,167 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
           )}
 
           {activeSection === 'users' && canAdmin && (
-            <div className="settings-form">
+            <div className="settings-form users-section">
               <div className="settings-section-head">
                 <h3>Users</h3>
-                <p>Add users and control permissions.</p>
+                <p>Create users, set roles, and scope edit access by domain/category.</p>
               </div>
-              <form className="users-add" onSubmit={addUser}>
-                <input placeholder="username" value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} />
-                <input placeholder="password" type="password" minLength={8} value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} />
-                <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
-                  <option value="view">view</option>
-                  <option value="edit">edit</option>
-                  <option value="admin">admin</option>
-                </select>
-                <button className="primary">Add user</button>
-              </form>
-              <div className="users-table">
-                {users.map((user) => (
-                  <div key={user.username} className="users-row">
-                    <span>{user.username}</span>
-                    <select value={user.role} onChange={(e) => updateUserRole(user.username, e.target.value)}>
+              <section className="users-create-card">
+                <button type="button" className="users-accordion-toggle" onClick={() => setCreateUserOpen((open) => !open)} aria-expanded={createUserOpen}>
+                  <span className="users-accordion-title">
+                    <UserPlus size={18} />
+                    <span>
+                    <b>Create user</b>
+                    <small>Add a local account. Scopes are optional.</small>
+                    </span>
+                  </span>
+                  <span className="users-accordion-caret">{createUserOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</span>
+                </button>
+                {createUserOpen && (
+                <form className="users-create-form users-accordion-panel" onSubmit={addUser}>
+                  <label>
+                    Username
+                    <input placeholder="username" value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} />
+                  </label>
+                  <label>
+                    Password
+                    <input placeholder="password" type="password" minLength={8} value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} />
+                  </label>
+                  <label>
+                    Role
+                    <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
                       <option value="view">view</option>
                       <option value="edit">edit</option>
                       <option value="admin">admin</option>
                     </select>
-                    <button className="danger" type="button" onClick={() => removeUser(user.username)} disabled={user.username === settings.username}>Delete</button>
+                  </label>
+                  <details className="users-scope-details users-field-wide">
+                    <summary>Access scopes</summary>
+                    <div className="user-scope-grid">
+                      <label>
+                        Allowed domains
+                        <textarea
+                          rows="3"
+                          placeholder="example.com&#10;*.example.com"
+                          value={userForm.allowedDomains}
+                          onChange={(e) => setUserForm({ ...userForm, allowedDomains: e.target.value })}
+                        />
+                      </label>
+                      <label>
+                        Allowed categories
+                        <textarea
+                          rows="3"
+                          placeholder="team-a, staging"
+                          value={userForm.allowedCategories}
+                          onChange={(e) => setUserForm({ ...userForm, allowedCategories: e.target.value })}
+                        />
+                      </label>
+                    </div>
+                  </details>
+                  <div className="users-create-actions">
+                    <button className="primary">Add user</button>
                   </div>
-                ))}
-              </div>
+                </form>
+                )}
+              </section>
+
+              <section className="users-list-card">
+                <button type="button" className="users-accordion-toggle" onClick={() => setUserListOpen((open) => !open)} aria-expanded={userListOpen}>
+                  <span className="users-accordion-title">
+                    <UsersRound size={18} />
+                    <span>
+                    <b>Existing users</b>
+                    <small>{users.length} account{users.length === 1 ? '' : 's'}. Role changes are immediate.</small>
+                    </span>
+                  </span>
+                  <span className="users-accordion-caret">{userListOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</span>
+                </button>
+                {userListOpen && (
+                <div className="users-accordion-panel">
+                  {users.length === 0 && <p className="users-empty">No users found.</p>}
+                  {users.length > 0 && (
+                    <div className="users-list-tools">
+                      <button type="button" onClick={() => setAllUsersExpanded(true)}><ChevronsDown size={15} />Expand all</button>
+                      <button type="button" onClick={() => setAllUsersExpanded(false)}><ChevronsUp size={15} />Collapse all</button>
+                    </div>
+                  )}
+                  <div className="users-list">
+                    {users.map((user) => {
+                      const userExpanded = Boolean(expandedUsers[user.username]);
+                      const domainCount = parseScopeText(userAccessDrafts[user.username]?.allowedDomains || '').length;
+                      const categoryCount = parseScopeText(userAccessDrafts[user.username]?.allowedCategories || '').length;
+                      return (
+                        <article key={user.username} className={`user-item ${userExpanded ? 'expanded' : ''}`}>
+                          <div className="user-item-head">
+                            <button
+                              type="button"
+                              className="user-item-toggle"
+                              onClick={() => setExpandedUsers((current) => ({ ...current, [user.username]: !current[user.username] }))}
+                              aria-expanded={userExpanded}
+                            >
+                              <span className="user-row-caret">{userExpanded ? <ChevronDown size={17} /> : <ChevronRight size={17} />}</span>
+                              <div className="user-item-title">
+                                <h5>{user.username}</h5>
+                                {user.username === settings.username && <span className="user-self-badge">Current account</span>}
+                              </div>
+                              <small>{domainCount} domain scope{domainCount === 1 ? '' : 's'} · {categoryCount} category scope{categoryCount === 1 ? '' : 's'}</small>
+                            </button>
+                            <label className="user-role-field">
+                              Role
+                              <select value={user.role} onChange={(e) => updateUserRole(user.username, e.target.value)}>
+                                <option value="view">view</option>
+                                <option value="edit">edit</option>
+                                <option value="admin">admin</option>
+                              </select>
+                            </label>
+                          </div>
+                          {userExpanded && (
+                          <>
+                            <div className="user-scope-grid">
+                              <label>
+                                Allowed domains
+                                <textarea
+                                  rows="3"
+                                  placeholder="example.com&#10;*.example.com"
+                                  value={userAccessDrafts[user.username]?.allowedDomains || ''}
+                                  onChange={(e) => setUserAccessDrafts((current) => ({
+                                    ...current,
+                                    [user.username]: {
+                                      ...(current[user.username] || { allowedDomains: '', allowedCategories: '' }),
+                                      allowedDomains: e.target.value,
+                                    },
+                                  }))}
+                                />
+                              </label>
+                              <label>
+                                Allowed categories
+                                <textarea
+                                  rows="3"
+                                  placeholder="team-a, staging"
+                                  value={userAccessDrafts[user.username]?.allowedCategories || ''}
+                                  onChange={(e) => setUserAccessDrafts((current) => ({
+                                    ...current,
+                                    [user.username]: {
+                                      ...(current[user.username] || { allowedDomains: '', allowedCategories: '' }),
+                                      allowedCategories: e.target.value,
+                                    },
+                                  }))}
+                                />
+                              </label>
+                            </div>
+                            <div className="user-item-actions">
+                              <button type="button" onClick={() => saveUserAccess(user.username)}><Save size={15} />Save access</button>
+                              <button className="danger" type="button" onClick={() => removeUser(user.username)} disabled={user.username === settings.username}><Trash2 size={15} />Delete</button>
+                            </div>
+                          </>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+                )}
+              </section>
             </div>
           )}
 
