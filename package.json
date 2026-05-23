@@ -35,6 +35,7 @@
     "typescript": "6.0.3"
   },
   "overrides": {
-    "dompurify": "^3.4.2"
+    "dompurify": "^3.4.2",
+    "qs": "6.15.2"
   }
 }

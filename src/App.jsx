@@ -28,8 +28,27 @@ const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST
 const emptyConfig = { path: 'Caddyfile', content: '', parsed: parseCaddyfile(''), health: {} };
 const accentValues = new Set(['violet', 'cyan', 'emerald', 'amber', 'rose']);
 
+function storageGet(key, fallback = '') {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
+
+function storedTheme() {
+  const value = storageGet('caddyui-theme', 'dark');
+  return value === 'light' ? 'light' : 'dark';
+}
+
 function storedAccent() {
-  const value = localStorage.getItem('caddyui-accent') || 'violet';
+  const value = storageGet('caddyui-accent', 'violet');
   return accentValues.has(value) ? value : 'violet';
 }
 
@@ -55,8 +74,16 @@ const localSettings = {
 };
 
 const api = async (path, options = {}) => {
-  const res = await fetch(path, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
-  const data = await res.json().catch(() => ({}));
+  const headers = { ...(options.headers || {}) };
+  const hasContentType = Object.keys(headers).some((key) => key.toLowerCase() === 'content-type');
+  const hasBody = options.body !== undefined && options.body !== null;
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  if (hasBody && !isFormData && !hasContentType) headers['Content-Type'] = 'application/json';
+  const res = await fetch(path, { credentials: 'include', ...options, headers });
+  const contentType = res.headers.get('content-type') || '';
+  const data = contentType.includes('application/json')
+    ? await res.json().catch(() => ({}))
+    : { message: await res.text().catch(() => '') };
   if (!res.ok) {
     const error = new Error(data.error || data.stderr || data.message || `Request failed: ${res.status}`);
     error.payload = data;
@@ -104,7 +131,7 @@ export default function App() {
   const [templateToApply, setTemplateToApply] = useState(null);
   const [page, setPage] = useState('proxies');
   const [collapsed, setCollapsed] = useState(false);
-  const [theme, setTheme] = useState(localStorage.getItem('caddyui-theme') || 'dark');
+  const [theme, setTheme] = useState(storedTheme);
   const [accent, setAccent] = useState(storedAccent);
   const [error, setError] = useState('');
   const [appInfo, setAppInfo] = useState({ version: APP_VERSION, updateAvailable: false });
@@ -122,6 +149,7 @@ export default function App() {
   const canEdit = canEditRole(role) || localTest;
   const canAdmin = canAdminRole(role) || localTest;
   const scopedEditor = Boolean(settings?.scopedEditor && !canAdmin);
+  const canManageGlobal = canEdit && !scopedEditor;
   const notificationTimers = useRef(new Map());
   const notificationRemovalTimers = useRef(new Map());
 
@@ -277,8 +305,16 @@ export default function App() {
     catch (e) { setError(e.message); }
   };
 
-  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('caddyui-theme', theme); }, [theme]);
-  useEffect(() => { document.documentElement.dataset.accent = accent; localStorage.setItem('caddyui-accent', accent); }, [accent]);
+  useEffect(() => {
+    const nextTheme = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = nextTheme;
+    storageSet('caddyui-theme', nextTheme);
+  }, [theme]);
+  useEffect(() => {
+    const nextAccent = accentValues.has(accent) ? accent : 'violet';
+    document.documentElement.dataset.accent = nextAccent;
+    storageSet('caddyui-accent', nextAccent);
+  }, [accent]);
   useEffect(() => {
     if (localTest) {
       fetch('/local-test/Caddyfile').then((r) => (r.ok ? r.text() : Promise.reject(new Error('Missing local test Caddyfile')))).then((content) => { const parsed = parseCaddyfile(content); const h = Object.fromEntries(parsed.sites.map((site) => [site.id, { local: { online: false }, domain: { online: false } }])); setConfig({ path: 'Caddyfile', content, parsed, health: h }); setHealth(h); }).catch(() => {});
@@ -486,7 +522,7 @@ export default function App() {
       canUpdate={canAdmin}
       checkingUpdates={checkingUpdates}
       updating={updating}
-      canEdit={canEdit}
+      canEdit={canManageGlobal}
       scopedEditor={scopedEditor}
       onValidateCaddy={validateCaddyGlobal}
       onConfirmReloadCaddy={() => setReloadConfirmOpen(true)}
@@ -536,6 +572,7 @@ export default function App() {
         <Templates
           api={api}
           canEdit={canEdit}
+          canManageTemplates={canManageGlobal}
           templates={templates}
           setTemplates={setTemplates}
           config={config}
@@ -569,7 +606,7 @@ export default function App() {
       )}
       {page === 'logs' && <Logs api={api} initialView={logsView} selectedEventId={selectedEventId} onSelectView={setLogsView} />}
       {page === 'settings' && (
-        <SettingsPage settings={settings} setSettings={setSettings} canEdit={canEdit} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} theme={theme} setTheme={setTheme} accent={accent} setAccent={setAccent} />
+        <SettingsPage settings={settings} setSettings={setSettings} canEdit={canAdmin} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} theme={theme} setTheme={setTheme} accent={accent} setAccent={setAccent} />
       )}
       <ReloadConfirmModal
         open={reloadConfirmOpen}

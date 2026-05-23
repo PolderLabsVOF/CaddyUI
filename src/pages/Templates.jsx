@@ -66,7 +66,7 @@ function templateSearchText(template = {}) {
   ].join(' ').toLowerCase();
 }
 
-export default function Templates({ api, canEdit, templates = [], setTemplates, config, onUseTemplate, notify }) {
+export default function Templates({ api, canEdit, canManageTemplates = canEdit, templates = [], setTemplates, config, onUseTemplate, notify }) {
   const [form, setForm] = useState({ ...emptyTemplate });
   const [editingId, setEditingId] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -105,7 +105,7 @@ export default function Templates({ api, canEdit, templates = [], setTemplates, 
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!canEdit) return;
+    if (!canManageTemplates) return;
     setBusy(true);
     setError('');
     try {
@@ -157,7 +157,7 @@ export default function Templates({ api, canEdit, templates = [], setTemplates, 
   };
 
   const removeTemplate = async (template) => {
-    if (!canEdit) return;
+    if (!canManageTemplates) return;
     setBusy(true);
     setError('');
     try {
@@ -183,7 +183,7 @@ export default function Templates({ api, canEdit, templates = [], setTemplates, 
 
       {error && <Notice type="error">{error}</Notice>}
 
-      {canEdit && (
+      {canManageTemplates && (
         <section className="template-editor-card">
           <button type="button" className="template-accordion-toggle" onClick={() => setFormOpen((open) => !open)} aria-expanded={formOpen}>
             <span>
@@ -318,8 +318,8 @@ export default function Templates({ api, canEdit, templates = [], setTemplates, 
               </div>
               <div className="template-card-actions">
                 {canEdit && <button type="button" onClick={() => onUseTemplate?.(template)}><Send size={15} />Use</button>}
-                {canEdit && <button type="button" onClick={() => startEdit(template)}><Pencil size={15} />Edit</button>}
-                {canEdit && (
+                {canManageTemplates && <button type="button" onClick={() => startEdit(template)}><Pencil size={15} />Edit</button>}
+                {canManageTemplates && (
                   <button type="button" className="danger" onClick={() => removeTemplate(template)} disabled={busy}>
                     <Trash2 size={15} />Delete
                   </button>

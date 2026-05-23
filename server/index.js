@@ -182,8 +182,12 @@ app.use((_req, res, next) => {
   );
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-DNS-Prefetch-Control', 'off');
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
   res.setHeader('Referrer-Policy', 'same-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   if (IS_PRODUCTION) {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
@@ -298,9 +302,13 @@ function clearAttempts(key) {
 }
 
 function pruneLoginAttempts(now = Date.now()) {
-  if (loginAttempts.size < 500) return;
   for (const [key, value] of loginAttempts.entries()) {
     if (!value?.resetAt || value.resetAt <= now) loginAttempts.delete(key);
+  }
+  if (loginAttempts.size <= 2000) return;
+  for (const key of loginAttempts.keys()) {
+    loginAttempts.delete(key);
+    if (loginAttempts.size <= 1500) return;
   }
 }
 
@@ -525,9 +533,19 @@ function normalizeProxyDescription(value = '') {
 }
 
 function normalizeApiUrl(value, fallback = '') {
-  const normalized = String(value ?? fallback ?? '').trim();
-  if (!normalized) return '';
-  return normalized.replace(/\/+$/, '');
+  const rawValue = String(value ?? '').trim();
+  const fallbackValue = String(fallback ?? '').trim();
+  const candidate = rawValue || fallbackValue;
+  if (!candidate) return '';
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    parsed.hash = '';
+    parsed.search = '';
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
 }
 
 function caddyApiOriginCandidates(baseUrl = '') {
@@ -1052,12 +1070,23 @@ async function loadResetConfigTemplate() {
 }
 
 function caddyPathPart(value = '') {
-  if (Array.isArray(value)) return value.filter(Boolean).join('/');
-  return String(value || '').trim().replace(/^\/+|\/+$/g, '');
+  const raw = Array.isArray(value) ? value.filter(Boolean).join('/') : String(value || '');
+  return raw
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment) => {
+      try {
+        return encodeURIComponent(decodeURIComponent(segment));
+      } catch {
+        return encodeURIComponent(segment);
+      }
+    })
+    .join('/');
 }
 
 function caddyEndpoint(scope, path = '') {
-  const cleaned = caddyPathPart(path);
+  const cleaned = String(path || '').replace(/^\/+|\/+$/g, '');
   return cleaned ? `${scope}/${cleaned}` : `${scope}/`;
 }
 
@@ -1734,7 +1763,7 @@ app.post('/api/caddy/load', requireTrustedOrigin, auth, requirePermission('edit'
   }
 });
 
-app.post('/api/caddy/stop', requireTrustedOrigin, auth, requirePermission('admin'), async (_req, res) => {
+app.post('/api/caddy/stop', requireTrustedOrigin, auth, requirePermission('admin'), requireRateLimit('caddy-stop', 4, 15 * 60 * 1000), async (_req, res) => {
   try {
     const settings = await loadSettings();
     const response = await requestCaddyApi(settings, '/stop', { method: 'POST', timeoutMs: 8000 });
@@ -2352,7 +2381,7 @@ app.get('/api/settings', auth, requirePermission('view'), async (req, res) => {
   });
 });
 
-app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
+app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('admin'), async (req, res) => {
   const settings = await loadSettings();
   const {
     configMode,
@@ -2452,7 +2481,7 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
   res.json({ settings: publicSettings(next, req.user.username), event });
 });
 
-app.post('/api/settings/test-api', requireTrustedOrigin, auth, requirePermission('edit'), requireRateLimit('test-api', 20, 60 * 1000), async (req, res) => {
+app.post('/api/settings/test-api', requireTrustedOrigin, auth, requirePermission('admin'), requireRateLimit('test-api', 20, 60 * 1000), async (req, res) => {
   const settings = await loadSettings();
   const providedUrl = normalizeApiUrl(req.body?.caddyApiUrl, settings.caddyApiUrl || DEFAULT_CADDY_API_URL);
   const providedSecret =
@@ -2573,7 +2602,7 @@ app.get('/api/templates', auth, requirePermission('view'), async (_req, res) => 
   res.json({ templates: normalizeSettings(settings).proxyTemplates || [] });
 });
 
-app.post('/api/templates', requireTrustedOrigin, auth, requirePermission('edit'), requireRateLimit('create-template', 24, 15 * 60 * 1000), async (req, res) => {
+app.post('/api/templates', requireTrustedOrigin, auth, requirePermission('edit'), requireUnscopedEditPermission(), requireRateLimit('create-template', 24, 15 * 60 * 1000), async (req, res) => {
   const settings = await loadSettings();
   const normalized = normalizeSettings(settings);
   const template = normalizeProxyTemplate(req.body || {}, { fallbackId: randomUUID(), touch: true });
@@ -2605,7 +2634,7 @@ app.post('/api/templates', requireTrustedOrigin, auth, requirePermission('edit')
   return res.json({ templates: normalized.proxyTemplates, event });
 });
 
-app.put('/api/templates/:templateId', requireTrustedOrigin, auth, requirePermission('edit'), requireRateLimit('update-template', 40, 15 * 60 * 1000), async (req, res) => {
+app.put('/api/templates/:templateId', requireTrustedOrigin, auth, requirePermission('edit'), requireUnscopedEditPermission(), requireRateLimit('update-template', 40, 15 * 60 * 1000), async (req, res) => {
   const settings = await loadSettings();
   const normalized = normalizeSettings(settings);
   const templates = [...(normalized.proxyTemplates || [])];
@@ -2643,7 +2672,7 @@ app.put('/api/templates/:templateId', requireTrustedOrigin, auth, requirePermiss
   return res.json({ templates, event });
 });
 
-app.delete('/api/templates/:templateId', requireTrustedOrigin, auth, requirePermission('edit'), requireRateLimit('delete-template', 24, 15 * 60 * 1000), async (req, res) => {
+app.delete('/api/templates/:templateId', requireTrustedOrigin, auth, requirePermission('edit'), requireUnscopedEditPermission(), requireRateLimit('delete-template', 24, 15 * 60 * 1000), async (req, res) => {
   const settings = await loadSettings();
   const normalized = normalizeSettings(settings);
   const templates = [...(normalized.proxyTemplates || [])];
@@ -2854,8 +2883,21 @@ app.post('/api/app/update', requireTrustedOrigin, auth, requirePermission('admin
 
 if (process.env.NODE_ENV === 'production') {
   const dist = path.join(ROOT, 'dist');
-  app.use(express.static(dist));
-  app.get(/.*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  app.use(
+    express.static(dist, {
+      setHeaders(res, filePath) {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          return;
+        }
+        res.setHeader('Cache-Control', 'no-cache');
+      },
+    })
+  );
+  app.get(/.*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(dist, 'index.html'));
+  });
 }
 
 loadSettings().catch(() => {});

@@ -72,7 +72,10 @@ Run the same command again later to update CaddyUI.
 
 - Manage reverse proxies from the UI
 - Add, edit, enable, disable, and delete proxy entries
+- Group proxies by domain or category, with independent sorting per section
 - Keep advanced/raw Caddy entries visible in the main proxy dashboard, with raw editing when needed
+- Create reusable proxy templates and apply them while creating new proxies
+- Build templates from scratch or from an existing proxy
 - Create and manage Caddy snippets/middlewares
 - Use a larger middleware workbench with templates, helpers, preview, duplicate, and copy-import actions
 - Monaco-powered editors for raw config and entries
@@ -82,9 +85,13 @@ Run the same command again later to update CaddyUI.
 - Review a structured event log with actor tracking and notification deep-links
 - Built-in user authentication
 - Role-based access: `view`, `edit`, and `admin`
+- Scoped editor access by allowed domain and/or category
 - Security settings: trusted proxy hops, cookie mode, setup exposure, allowed origins
+- Appearance settings: dark/light mode plus theme accent color selection
 - Config apply modes: file mode (write Caddyfile) or API mode (push via Caddy Admin API)
+- Authenticated Caddy Admin API bridge for validation, load, config/id paths, PKI, upstreams, and stop
 - Onboarding with Caddyfile and log discovery
+- Docker sandbox for local beta testing with live-mounted source, Caddy, sample configs, logs, and Caddy API access
 - Self-updates from `stable`, `beta`, or `dev`
 - Date-based patch releases for fast fixes without bumping the base semver every time
 
@@ -97,6 +104,10 @@ When you apply changes:
 - In `api` mode, CaddyUI pushes config through the Caddy Admin API and keeps a working config cache for the editor.
 
 It also handles onboarding, authentication, user roles, log discovery, update channel selection, and runtime security settings.
+
+Scoped users can be limited to specific domains and/or categories. Scoped editors can manage matching proxies, but they cannot edit global configuration, middlewares, connection settings, security settings, or shared template definitions.
+
+Proxy templates are stored in CaddyUI settings. Admins and unscoped editors can create and manage templates; editors can use templates when creating proxies.
 
 In API mode, CaddyUI exposes an authenticated Caddy API bridge under `/api/caddy/*`:
 - `POST /api/caddy/load`, `POST /api/caddy/adapt`, `POST /api/caddy/stop`
@@ -125,6 +136,49 @@ npm run release:patch
 
 The updater UI recognizes these patch builds and will show the full display version instead of only the base semver.
 
+## Docker sandbox
+
+For local beta testing, use the Docker sandbox. It creates a separate ignored folder under `.tmp/docker-test-env`, installs Caddy in the container, live-mounts this project into `/workspace`, starts the local CaddyUI source, and bootstraps a test admin account.
+
+```bash
+scripts/docker-sandbox.sh up
+```
+
+Default URLs:
+
+- UI through Vite: `http://127.0.0.1:5173`
+- CaddyUI API/server: `http://127.0.0.1:8787`
+- Test Caddy site: `http://127.0.0.1:8080`
+- Caddy Admin API: `http://127.0.0.1:2019`
+
+Default login:
+
+- username: `admin`
+- password: `adminpass123!`
+
+Useful commands:
+
+```bash
+scripts/docker-sandbox.sh status
+scripts/docker-sandbox.sh logs
+scripts/docker-sandbox.sh down
+scripts/docker-sandbox.sh reset
+```
+
+Environment overrides:
+
+- `CADDYUI_SANDBOX_DIR`
+- `CADDYUI_SANDBOX_STACK`
+- `CADDYUI_SANDBOX_UI_PORT`
+- `CADDYUI_SANDBOX_API_PORT`
+- `CADDYUI_SANDBOX_HTTP_PORT`
+- `CADDYUI_SANDBOX_ADMIN_PORT`
+- `CADDYUI_SANDBOX_ADMIN_USER`
+- `CADDYUI_SANDBOX_ADMIN_PASSWORD`
+- `CADDYUI_SANDBOX_SECRET`
+
+The generated sandbox Caddyfile is at `.tmp/docker-test-env/Caddyfile.test`. It includes examples for snippets, local upstreams, reverse proxy load balancing, host-based routes, redirects, internal TLS, matchers, rewrites, static files, and method/path matchers.
+
 ## Looks like this
 
 <p align="center">
@@ -137,8 +191,10 @@ The first-time setup walks you through:
 
 1. Creating an admin user
 2. Entering the setup token, if required
-3. Selecting a detected Caddyfile or entering a path manually
-4. Selecting detected log files or adding log paths manually
+3. Choosing file mode or API mode
+4. Selecting a detected Caddyfile or entering a path manually
+5. Entering the Caddy Admin API URL and optional secret for API mode
+6. Selecting detected log files or adding log paths manually
 
 ## Switch config mode in Settings
 
@@ -151,15 +207,58 @@ The first-time setup walks you through:
 Notes:
 - In API mode, Caddy API defaults can also come from `CADDY_UI_CADDY_API_URL` and `CADDY_UI_CADDY_API_TOKEN`.
 - The API secret is stored server-side; the UI only reports whether one is configured.
+- Connection, Caddy API secret, security, user, update, and danger/recovery settings require `admin`.
+
+## Users and scoped access
+
+CaddyUI has three roles:
+
+- `view`: can sign in and inspect allowed UI data.
+- `edit`: can create and modify proxies and other editable surfaces.
+- `admin`: can manage users, settings, updates, security controls, and recovery actions.
+
+Editors can also be scoped with:
+
+- Allowed domains, for example `example.com` or `*.example.com`
+- Allowed categories, for example `team-a` or `staging`
+
+When an editor has domain or category scopes, CaddyUI treats that account as scoped. Scoped editors can only mutate matching proxies. They cannot access raw config editing, middleware mutation, shared template management, Caddy connection settings, Caddy API test controls, or security settings.
+
+## Templates
+
+Open **Templates** to create reusable proxy presets. A template can include:
+
+- host
+- upstream
+- category
+- tags
+- middleware imports
+- logging mode and log path
+- description
+
+Templates can be created from scratch or populated from an existing proxy. On the **Proxies** page, choose a template in the create-proxy form to prefill the new proxy.
+
+## Appearance
+
+Open **Settings** -> **Appearance** to set browser-local display preferences:
+
+- Dark or light mode
+- Accent color: violet, cyan, emerald, amber, or rose
 
 ## Security note
 
 - In production (`NODE_ENV=production`), set `CADDY_UI_SECRET` to a strong value (at least 32 characters), or the server will refuse to start.
+- CaddyUI uses HTTP-only same-site cookies, origin checks on write actions, rate limits on sensitive actions, a bounded log-path allowlist, and production security headers.
+- The Caddy Admin API bridge is authenticated and permission-checked. Mutating bridge routes require edit access and scoped editors are blocked from raw/global mutations.
+- The server only accepts `http` and `https` Caddy API URLs.
 
 ## UI pages
 
 - **Proxies**  
-  Manage proxy entries with grouping, search, sorting, imports, logging, tags, categories, and inline advanced-entry visibility.
+  Manage proxy entries with grouping, search, independent section sorting, imports, logging, tags, categories, templates, and inline advanced-entry visibility.
+
+- **Templates**
+  Create, edit, delete, search, and apply reusable proxy presets. Templates can be loaded from existing proxies.
 
 - **Middlewares**  
   Create, edit, duplicate, preview, and organize reusable Caddy snippets with templates and helper inserts.
@@ -171,7 +270,7 @@ Notes:
   View Caddy logs from configured files and `journalctl`, plus a structured event log for UI/API actions.
 
 - **Settings**  
-  Configure config mode (`file`/`api`), API URL/secret, paths, scans, users, passwords, update channel, security options, and recovery actions.
+  Configure config mode (`file`/`api`), API URL/secret, paths, scans, users, scoped access, passwords, appearance, update channel, security options, and recovery actions.
 
 ## Reverse proxy example
 
