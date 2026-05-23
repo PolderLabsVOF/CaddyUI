@@ -6,10 +6,19 @@ const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST
 const sectionItems = [
   ['connection', 'Connection'],
   ['security', 'Security'],
+  ['appearance', 'Appearance'],
   ['account', 'Account'],
   ['users', 'Users'],
   ['updates', 'Updates'],
   ['danger', 'Danger'],
+];
+
+const accentOptions = [
+  ['violet', 'Violet', '#8b5cf6'],
+  ['cyan', 'Cyan', '#06b6d4'],
+  ['emerald', 'Emerald', '#10b981'],
+  ['amber', 'Amber', '#f59e0b'],
+  ['rose', 'Rose', '#f43f5e'],
 ];
 
 function scopeText(values = []) {
@@ -20,7 +29,7 @@ function parseScopeText(value = '') {
   return [...new Set(String(value || '').split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
 }
 
-export default function SettingsPage({ settings, setSettings, canEdit, canAdmin, api, notify, refreshConfig, setStatus }) {
+export default function SettingsPage({ settings, setSettings, canEdit, canAdmin, api, notify, refreshConfig, setStatus, theme, setTheme, accent, setAccent }) {
   const [activeSection, setActiveSection] = useState('connection');
   const [form, setForm] = useState({
     configMode: settings.configMode || 'api',
@@ -495,6 +504,39 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
                 </div>
               )}
             </form>
+          )}
+
+          {activeSection === 'appearance' && (
+            <div className="settings-form settings-card-grid">
+              <div className="settings-section-head">
+                <h3>Appearance</h3>
+                <p>Local display preferences for this browser.</p>
+              </div>
+              <div className="settings-card">
+                <h4>Theme mode</h4>
+                <div className="theme-mode-control">
+                  <button type="button" className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme?.('dark')}>Dark</button>
+                  <button type="button" className={theme === 'light' ? 'active' : ''} onClick={() => setTheme?.('light')}>Light</button>
+                </div>
+              </div>
+              <div className="settings-card">
+                <h4>Theme color</h4>
+                <div className="accent-color-grid">
+                  {accentOptions.map(([id, label, color]) => (
+                    <button
+                      type="button"
+                      key={id}
+                      className={`accent-color-option ${accent === id ? 'active' : ''}`}
+                      onClick={() => setAccent?.(id)}
+                      aria-pressed={accent === id}
+                    >
+                      <span className="accent-swatch" style={{ '--swatch-color': color }} />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
 
           {activeSection === 'account' && (

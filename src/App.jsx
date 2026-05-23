@@ -26,6 +26,13 @@ function formatDisplayVersion(version = '', patch = '') {
 const APP_VERSION = formatDisplayVersion(releaseMeta?.version || pkg.version, releaseMeta?.patch || '');
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
 const emptyConfig = { path: 'Caddyfile', content: '', parsed: parseCaddyfile(''), health: {} };
+const accentValues = new Set(['violet', 'cyan', 'emerald', 'amber', 'rose']);
+
+function storedAccent() {
+  const value = localStorage.getItem('caddyui-accent') || 'violet';
+  return accentValues.has(value) ? value : 'violet';
+}
+
 const localSettings = {
   userConfigured: true,
   caddyConfigured: true,
@@ -98,6 +105,7 @@ export default function App() {
   const [page, setPage] = useState('proxies');
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('caddyui-theme') || 'dark');
+  const [accent, setAccent] = useState(storedAccent);
   const [error, setError] = useState('');
   const [appInfo, setAppInfo] = useState({ version: APP_VERSION, updateAvailable: false });
   const [checkingUpdates, setCheckingUpdates] = useState(false);
@@ -270,6 +278,7 @@ export default function App() {
   };
 
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('caddyui-theme', theme); }, [theme]);
+  useEffect(() => { document.documentElement.dataset.accent = accent; localStorage.setItem('caddyui-accent', accent); }, [accent]);
   useEffect(() => {
     if (localTest) {
       fetch('/local-test/Caddyfile').then((r) => (r.ok ? r.text() : Promise.reject(new Error('Missing local test Caddyfile')))).then((content) => { const parsed = parseCaddyfile(content); const h = Object.fromEntries(parsed.sites.map((site) => [site.id, { local: { online: false }, domain: { online: false } }])); setConfig({ path: 'Caddyfile', content, parsed, health: h }); setHealth(h); }).catch(() => {});
@@ -560,7 +569,7 @@ export default function App() {
       )}
       {page === 'logs' && <Logs api={api} initialView={logsView} selectedEventId={selectedEventId} onSelectView={setLogsView} />}
       {page === 'settings' && (
-        <SettingsPage settings={settings} setSettings={setSettings} canEdit={canEdit} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} />
+        <SettingsPage settings={settings} setSettings={setSettings} canEdit={canEdit} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} theme={theme} setTheme={setTheme} accent={accent} setAccent={setAccent} />
       )}
       <ReloadConfirmModal
         open={reloadConfirmOpen}
