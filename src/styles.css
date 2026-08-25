@@ -1710,6 +1710,242 @@ label {
   color: var(--muted);
 }
 
+.logs-section-head {
+  align-items: flex-end;
+}
+
+.logs-refresh-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.logs-refresh-controls label {
+  min-width: 130px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.logs-refresh-controls small {
+  align-self: center;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.log-diagnostics {
+  display: grid;
+  gap: 12px;
+}
+
+.log-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(100px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.log-metric {
+  min-height: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+.log-metric b {
+  font-size: 23px;
+  line-height: 1;
+}
+
+.log-metric span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.log-metric.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.log-metric.error b {
+  color: var(--bad);
+}
+
+.log-metric.warning b {
+  color: var(--warn);
+}
+
+.log-metric.info b {
+  color: var(--ok);
+}
+
+.logs-filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.logs-filterbar .logs-search-field {
+  flex: 2 1 240px;
+}
+
+.logs-filterbar select {
+  flex: 1 1 125px;
+  min-width: 115px;
+  width: auto;
+}
+
+.logs-filterbar button {
+  flex: 0 0 auto;
+}
+
+.logs-search-field,
+.event-log-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 90%, #777);
+  border-radius: var(--radius);
+  background: var(--input);
+}
+
+.logs-search-field input,
+.event-log-search input {
+  border: 0;
+  background: transparent;
+  padding-left: 0;
+}
+
+.logs-search-field:focus-within,
+.event-log-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.active-filter {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.diagnostic-log-list {
+  display: grid;
+  gap: 7px;
+}
+
+.diagnostic-log-row {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.diagnostic-log-row.error {
+  border-left-color: var(--bad);
+}
+
+.diagnostic-log-row.warning {
+  border-left-color: var(--warn);
+}
+
+.diagnostic-log-row.info {
+  border-left-color: var(--ok);
+}
+
+.diagnostic-log-summary {
+  width: 100%;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 92px 170px minmax(120px, 0.55fr) minmax(220px, 1.7fr);
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.diagnostic-log-summary:hover {
+  background: var(--surface-2);
+}
+
+.diagnostic-log-summary time,
+.diagnostic-log-summary small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostic-log-summary strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostic-log-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.diagnostic-log-details pre {
+  margin: 6px 0 0;
+  max-height: 300px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--input) 72%, #000 28%);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-source-error {
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+}
+
+.event-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.event-status.info,
+.event-status.unknown {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.failure-details {
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+  background: color-mix(in srgb, var(--bad) 9%, var(--surface-2));
+}
+
+.failure-details h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--bad);
+}
+
+.event-table tr:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .proxy-row.pending {
   opacity: 0.82;
 }
@@ -2564,6 +2800,14 @@ label {
     min-width: 0;
   }
 
+  .log-metrics {
+    grid-template-columns: repeat(3, minmax(100px, 1fr));
+  }
+
+  .diagnostic-log-summary {
+    grid-template-columns: 92px 150px minmax(100px, 0.45fr) minmax(180px, 1.4fr);
+  }
+
   .event-detail-card {
     position: static;
   }
@@ -2789,6 +3033,55 @@ label {
     padding: 12px;
     background: var(--surface);
     border-bottom: 1px solid var(--line);
+  }
+
+  .logs-refresh-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .logs-refresh-controls label {
+    flex: 1 1 150px;
+  }
+
+  .logs-refresh-controls button,
+  .logs-filterbar button,
+  .logs-filterbar select,
+  .event-log-tools select {
+    min-height: 44px;
+  }
+
+  .logs-filterbar {
+    align-items: stretch;
+  }
+
+  .logs-filterbar .logs-search-field,
+  .logs-filterbar select,
+  .logs-filterbar button {
+    flex: 1 1 100%;
+  }
+
+  .log-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .diagnostic-log-summary {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .diagnostic-log-summary time,
+  .diagnostic-log-summary small {
+    display: none;
+  }
+
+  .diagnostic-log-details {
+    grid-template-columns: 1fr;
+  }
+
+  .event-log-tools {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .event-table th:nth-child(4),
