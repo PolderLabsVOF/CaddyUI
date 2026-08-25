@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5-beta - 2026-05-12
+
+### Changed
+- Reorganize active development warning section in README for clarity.
+- Refactor installation instructions in README for clarity.
+
 ## 0.2.0 - 2026-05-11
 
 ### Added
