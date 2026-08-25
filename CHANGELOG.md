@@ -6,6 +6,9 @@
 - Reorganize active development warning section in README for clarity.
 - Refactor installation instructions in README for clarity.
 
+### Fixed
+- Reload Caddy now returns JSON on success/failure instead of an Express `<pre>Internal Server Error</pre>` HTML page when the SQLite event log fails to append.
+
 ## 0.2.4-beta - 2026-05-23
 
 ### Added
