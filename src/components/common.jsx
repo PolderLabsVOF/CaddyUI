@@ -1,4 +1,4 @@
-import React, { memo, useState } from 'react';
+import React, { memo, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, LayoutTemplate, Loader2, Menu, MessageSquare, Moon, ScrollText, ServerCog, Settings, Shield, SidebarClose, Sun } from 'lucide-react';
 import { updateSimpleProxy } from '../../server/caddyParser.js';
 
@@ -314,13 +314,24 @@ export const previewProxyBlock = (content, draft) => {
 export function MiddlewarePicker({ snippets, value, onChange }) {
   const selected = selectedImportNames(value);
   const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleMouseDown = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [open]);
   if (!snippets.length) return null;
   const toggle = (name) => {
     const set = new Set(selected);
     if (set.has(name)) set.delete(name); else set.add(name);
     onChange([...set].join(', '));
   };
-  return <div className="import-dropdown"><button type="button" className="import-dropdown-trigger" onClick={() => setOpen((v) => !v)}>{selected.length ? `${selected.length} selected` : 'Select imports'}</button>{open && <div className="import-dropdown-menu">{snippets.map((s) => <label key={s.name} className="import-option"><input type="checkbox" checked={selected.includes(s.name)} onChange={() => toggle(s.name)} /><span>{s.name}</span><small>{s.inferredType}</small></label>)}</div>}</div>;
+  return <div className="import-dropdown" ref={containerRef}><button type="button" className="import-dropdown-trigger" onClick={() => setOpen((v) => !v)}>{selected.length ? `${selected.length} selected` : 'Select imports'}</button>{open && <div className="import-dropdown-menu" role="listbox">{snippets.map((s) => <label key={s.name} className="import-option"><input type="checkbox" checked={selected.includes(s.name)} onChange={() => toggle(s.name)} /><span>{s.name}</span><small>{s.inferredType}</small></label>)}</div>}</div>;
 }
 
 export const StatusDot = ({ check, disabled = false }) => {
