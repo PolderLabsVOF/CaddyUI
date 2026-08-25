@@ -37,6 +37,9 @@ const SESSION_PATH = path.join(DATA_DIR, 'sessions.json');
 const DEFAULT_SECRET = 'dev-change-me-caddy-ui';
 const JWT_SECRET = process.env.CADDY_UI_SECRET || DEFAULT_SECRET;
 const COOKIE_NAME = 'caddyui_token';
+const NORMAL_SESSION_TTL = '12h';
+const REMEMBERED_SESSION_TTL = '30d';
+const REMEMBERED_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const SETUP_TOKEN = process.env.CADDY_UI_SETUP_TOKEN || '';
 const DEFAULT_CONFIG_MODE = String(process.env.CADDY_UI_CONFIG_MODE || 'api').trim().toLowerCase() === 'file' ? 'file' : 'api';
@@ -270,9 +273,15 @@ function requireSetupOrigin(req, res, next) {
   return res.status(403).json({ error: 'Initial setup is blocked from public addresses.' });
 }
 
-function cookieOptions(req) {
+function cookieOptions(req, { rememberMe = false } = {}) {
   const secure = runtimeSecureCookieMode === 'insecure' ? false : runtimeSecureCookieMode === 'secure' || requestProto(req) === 'https';
-  return { httpOnly: true, sameSite: 'strict', secure, path: '/' };
+  return {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure,
+    path: '/',
+    ...(rememberMe ? { maxAge: REMEMBERED_SESSION_MAX_AGE_MS } : {}),
+  };
 }
 
 function tooManyAttempts(key) {
@@ -875,8 +884,12 @@ async function revokeToken(decoded) {
   await saveSessionState(state);
 }
 
-function sign(username) {
-  return jwt.sign({ username, jti: randomUUID() }, JWT_SECRET, { algorithm: JWT_ALGORITHM, expiresIn: '4h' });
+function sign(username, { rememberMe = false } = {}) {
+  return jwt.sign(
+    { username, jti: randomUUID() },
+    JWT_SECRET,
+    { algorithm: JWT_ALGORITHM, expiresIn: rememberMe ? REMEMBERED_SESSION_TTL : NORMAL_SESSION_TTL }
+  );
 }
 
 async function auth(req, res, next) {
@@ -1675,6 +1688,7 @@ app.post('/api/setup/config', requireTrustedOrigin, auth, requirePermission('edi
 app.post('/api/login', requireTrustedOrigin, async (req, res) => {
   const settings = await loadSettings();
   const { username, password } = req.body || {};
+  const rememberMe = req.body?.rememberMe === true;
   const normalizedUsername = String(username || '').trim();
   const rateKey = `${clientIp(req)}:${normalizedUsername}`;
   if (tooManyAttempts(rateKey)) return res.status(429).json({ error: 'Too many login attempts.' });
@@ -1686,7 +1700,7 @@ app.post('/api/login', requireTrustedOrigin, async (req, res) => {
   }
 
   clearAttempts(rateKey);
-  res.cookie(COOKIE_NAME, sign(user.username), cookieOptions(req));
+  res.cookie(COOKIE_NAME, sign(user.username, { rememberMe }), cookieOptions(req, { rememberMe }));
   const event = await recordEvent(req, {
     actorUsername: user.username,
     actorRole: user.role,
@@ -1695,6 +1709,7 @@ app.post('/api/login', requireTrustedOrigin, async (req, res) => {
     targetType: 'session',
     targetId: user.username,
     message: `${user.username} signed in.`,
+    details: { rememberMe },
   });
   res.json({ settings: publicSettings(settings, user.username), event });
 });

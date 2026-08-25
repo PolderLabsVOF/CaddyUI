@@ -169,17 +169,38 @@ export function AuthGate({ status, onReady, api }) {
   const needsLogin = status?.settings?.userConfigured && !status?.authenticated;
   const needsConfig = status?.settings?.userConfigured && status?.authenticated && !status?.settings?.caddyConfigured;
   const discovered = status?.discovered || { caddyfiles: [], logfiles: [] };
-  const [userForm, setUserForm] = useState({ username: '', password: '', setupToken: '' });
+  const [userForm, setUserForm] = useState({ username: '', password: '', setupToken: '', rememberMe: false });
   const [configForm, setConfigForm] = useState({ configMode: status?.settings?.configMode || 'api', caddyfilePath: discovered.caddyfiles?.[0]?.path || '', caddyApiUrl: status?.settings?.caddyApiUrl || 'http://127.0.0.1:2019', logPaths: (discovered.logfiles || []).map((f) => f.path).join('\n') });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const submitUser = async (e) => { e.preventDefault(); setBusy(true); setError(''); try { const path = needsLogin ? '/api/login' : '/api/setup/user'; const payload = needsLogin ? { username: userForm.username, password: userForm.password } : userForm; onReady(await api(path, { method: 'POST', body: JSON.stringify(payload) })); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  const submitUser = async (e) => { e.preventDefault(); setBusy(true); setError(''); try { const path = needsLogin ? '/api/login' : '/api/setup/user'; const payload = needsLogin ? { username: userForm.username, password: userForm.password, rememberMe: userForm.rememberMe } : { username: userForm.username, password: userForm.password, setupToken: userForm.setupToken }; onReady(await api(path, { method: 'POST', body: JSON.stringify(payload) })); } catch (err) { setError(err.message); } finally { setBusy(false); } };
   const submitConfig = async (e) => { e.preventDefault(); setBusy(true); setError(''); try { onReady(await api('/api/setup/config', { method: 'POST', body: JSON.stringify({ configMode: configForm.configMode, caddyfilePath: configForm.caddyfilePath, caddyApiUrl: configForm.caddyApiUrl, logPaths: configForm.logPaths.split('\n').map((x) => x.trim()).filter(Boolean) }) })); } catch (err) { setError(err.message); } finally { setBusy(false); } };
 
   if (needsConfig) return <div className="auth-page"><form className="auth-card" onSubmit={submitConfig}><h1>CaddyUI</h1><p>Admin user created. Choose API mode or file mode, then set the config and log sources.</p>{error && <Notice type="error">{error}</Notice>}<label>Config mode<select value={configForm.configMode} onChange={(e) => setConfigForm({ ...configForm, configMode: e.target.value })}><option value="api">api</option><option value="file">file</option></select></label><label>Caddy API URL<input value={configForm.caddyApiUrl} onChange={(e) => setConfigForm({ ...configForm, caddyApiUrl: e.target.value })} placeholder="http://127.0.0.1:2019" /></label><label>Caddyfile path<input value={configForm.caddyfilePath} onChange={(e) => setConfigForm({ ...configForm, caddyfilePath: e.target.value })} readOnly={configForm.configMode === 'api'} /></label>{discovered.caddyfiles?.length > 0 && <div className="discover"><b>Discovered Caddyfiles</b>{discovered.caddyfiles.map((f) => <button type="button" key={f.path} onClick={() => setConfigForm({ ...configForm, caddyfilePath: f.path })}>{f.path}</button>)}</div>}<label>Log paths, one per line<textarea rows="5" value={configForm.logPaths} placeholder="/var/log/caddy/access.log" onChange={(e) => setConfigForm({ ...configForm, logPaths: e.target.value })} /></label>{discovered.logfiles?.length > 0 && <div className="discover"><b>Discovered log files</b>{discovered.logfiles.map((f) => <button type="button" key={f.path} onClick={() => { const lines = new Set(configForm.logPaths.split('\n').map((x) => x.trim()).filter(Boolean)); lines.add(f.path); setConfigForm({ ...configForm, logPaths: [...lines].join('\n') }); }}>{f.path}</button>)}</div>}<button className="primary" disabled={busy}>{busy ? <Loader2 className="spin" /> : <FileCode2 size={16} />}Save Caddy configuration</button></form></div>;
 
-  return <div className="auth-page"><form className="auth-card" onSubmit={submitUser}><h1>CaddyUI</h1><p>{needsLogin ? 'Sign in to continue.' : 'First create the admin user. Caddy configuration is selected in the next step.'}</p>{error && <Notice type="error">{error}</Notice>}<label>Username<input value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} /></label><label>Password<input type="password" minLength={8} value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} /></label>{!needsLogin && status?.settings?.setupTokenRequired && <label>Setup token<input value={userForm.setupToken} onChange={(e) => setUserForm({ ...userForm, setupToken: e.target.value })} /></label>}<button className="primary" disabled={busy}>{busy ? <Loader2 className="spin" /> : <KeyRound size={16} />}{needsLogin ? 'Login' : 'Create admin account'}</button></form></div>;
+  return (
+    <div className="auth-page">
+      <form className="auth-card" onSubmit={submitUser}>
+        <h1>CaddyUI</h1>
+        <p>{needsLogin ? 'Sign in to continue.' : 'First create the admin user. Caddy configuration is selected in the next step.'}</p>
+        {error && <Notice type="error">{error}</Notice>}
+        <label>Username<input autoComplete="username" value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} /></label>
+        <label>Password<input type="password" autoComplete={needsLogin ? 'current-password' : 'new-password'} minLength={8} value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} /></label>
+        {!needsLogin && status?.settings?.setupTokenRequired && <label>Setup token<input value={userForm.setupToken} onChange={(e) => setUserForm({ ...userForm, setupToken: e.target.value })} /></label>}
+        {needsLogin && (
+          <div className="remember-login">
+            <label htmlFor="remember-login">
+              <input id="remember-login" type="checkbox" checked={userForm.rememberMe} onChange={(e) => setUserForm({ ...userForm, rememberMe: e.target.checked })} />
+              <span>Remember me for 30 days</span>
+            </label>
+            <small>Use only on a trusted device.</small>
+          </div>
+        )}
+        <button className="primary" disabled={busy}>{busy ? <Loader2 className="spin" /> : <KeyRound size={16} />}{needsLogin ? 'Login' : 'Create admin account'}</button>
+      </form>
+    </div>
+  );
 }
 
 export function ConfirmModal({ confirm, onCancel, onConfirm }) {

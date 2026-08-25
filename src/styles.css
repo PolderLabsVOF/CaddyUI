@@ -586,6 +586,31 @@ label {
   margin-top: 14px;
 }
 
+.remember-login {
+  margin-top: 4px;
+}
+
+.remember-login label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}
+
+.remember-login input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.remember-login small {
+  display: block;
+  margin: 5px 0 0 27px;
+  color: var(--muted);
+}
+
 .discover {
   margin: 10px 0;
   padding: 10px;
