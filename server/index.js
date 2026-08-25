@@ -2098,7 +2098,7 @@ app.post('/api/config/reload', requireTrustedOrigin, auth, requirePermission('ed
           status: 'error',
           message: summarizeText(stderr),
           details: { code: response.status, stdout: '', stderr },
-        });
+        }).catch((eventError) => { console.warn('Failed to record reload event:', eventError?.message || eventError); return null; });
         return res.status(400).json({ ok: false, code: response.status, stdout: '', stderr, event });
       }
       const event = await recordEvent(req, {
@@ -2107,8 +2107,8 @@ app.post('/api/config/reload', requireTrustedOrigin, auth, requirePermission('ed
         targetType: 'caddy',
         targetId: 'admin-api',
         message: 'Reloaded Caddy via admin API.',
-      });
-      return res.json({ ok: true, code: 0, stdout: 'Reloaded Caddy via admin API.', stderr: '', event });
+      }).catch((eventError) => { console.warn('Failed to record reload event:', eventError?.message || eventError); return null; });
+      return res.json({ ok: true, code: 0, stdout: 'Reloaded Caddy via admin API.', stderr: '', event: event || undefined });
     } catch (error) {
       const stderr = error.message || 'Caddy API is unavailable.';
       const event = await recordEvent(req, {
@@ -2119,7 +2119,7 @@ app.post('/api/config/reload', requireTrustedOrigin, auth, requirePermission('ed
         status: 'error',
         message: summarizeText(stderr),
         details: { code: -1, stdout: '', stderr },
-      });
+      }).catch((eventError) => { console.warn('Failed to record reload event:', eventError?.message || eventError); return null; });
       return res.status(503).json({ ok: false, code: -1, stdout: '', stderr, event });
     }
   }
@@ -2133,7 +2133,7 @@ app.post('/api/config/reload', requireTrustedOrigin, auth, requirePermission('ed
       status: 'error',
       message: 'Caddy binary is not available in this container. Run CaddyUI where it can execute caddy reload.',
       details: { ...result },
-    });
+    }).catch((eventError) => { console.warn('Failed to record reload event:', eventError?.message || eventError); return null; });
     return res.status(503).json({
       ...result,
       stderr: 'Caddy binary is not available in this container. Run CaddyUI where it can execute caddy reload.',
@@ -2148,7 +2148,7 @@ app.post('/api/config/reload', requireTrustedOrigin, auth, requirePermission('ed
     status: result.ok ? 'success' : 'error',
     message: summarizeText(result.ok ? (result.stdout || 'Reloaded Caddy.') : (result.stderr || 'Caddy reload failed.')),
     details: result,
-  });
+  }).catch((eventError) => { console.warn('Failed to record reload event:', eventError?.message || eventError); return null; });
   return res.status(result.ok ? 200 : 400).json({ ...result, event });
 });
 
@@ -2901,6 +2901,20 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 loadSettings().catch(() => {});
+
+// JSON-only error handler. Express's default finalhandler emits an HTML
+// <pre>Internal Server Error</pre> page when an async route handler throws.
+// Returning JSON keeps client error parsing consistent across the API.
+app.use((err, _req, res, next) => {
+  if (res.headersSent) {
+    console.error('Unhandled error after response started:', err);
+    return next(err);
+  }
+  const status = Number.isInteger(err?.status) ? err.status : 500;
+  const message = err?.message || 'Internal Server Error';
+  console.error('Unhandled error:', err);
+  res.status(status).json({ ok: false, error: message });
+});
 
 app.listen(PORT, () => {
   console.log(`CaddyUI API listening on :${PORT}`);
