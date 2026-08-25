@@ -2,7 +2,14 @@
 
 ## 0.2.5-beta - 2026-05-12
 
+### Added
+- Optional **Remember me** login keeps trusted-device sessions active for 30 days.
+- Logs diagnostics now classify structured JSON and plain-text entries by severity with counts, filters, search, sorting, source selection, expandable details, and raw view.
+- Logs auto-refresh can be set to Off, 5, 15, or 30 seconds and remembers the browser preference.
+- Activity events now include status/kind filters, multiple sort modes, searchable details, copy support, and prominent failure output.
+
 ### Changed
+- Standard login sessions now last 12 hours instead of 4 hours.
 - Reorganize active development warning section in README for clarity.
 - Refactor installation instructions in README for clarity.
 
