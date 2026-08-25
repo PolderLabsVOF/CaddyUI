@@ -3,10 +3,12 @@ set -Eeuo pipefail
 umask 077
 
 APP_NAME="CaddyUI"
-SCRIPT_CHANNEL="main"
+SCRIPT_CHANNEL="dev"
 INSTALLER_VERSION="2026.05.11-3"
 REPO_URL="https://github.com/DrB0rk/CaddyUI.git"
 BRANCH="${CADDYUI_BRANCH:-$SCRIPT_CHANNEL}"
+CONFIG_MODE="${CADDYUI_CONFIG_MODE:-}"
+CADDY_API_URL="${CADDYUI_CADDY_API_URL:-http://127.0.0.1:2019}"
 START_PORT="${CADDYUI_PORT:-8787}"
 PORT_SCAN_LIMIT="${CADDYUI_PORT_SCAN_LIMIT:-100}"
 RUN_USER="${SUDO_USER:-${USER:-caddyui}}"
@@ -54,8 +56,28 @@ fail() { printf "%b\n" "${RED}✗${NC} $*" >&2; exit 1; }
 app_version_from_dir() {
   local dir="$1"
   local package_json="$dir/package.json"
+  local release_json="$dir/release.json"
   [[ -f "$package_json" ]] || { printf 'unknown'; return 0; }
-  node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(String(p.version||"unknown"));' "$package_json" 2>/dev/null || printf 'unknown'
+  node -e '
+const fs=require("fs");
+const path=require("path");
+const dir=process.argv[1];
+const packagePath=path.join(dir,"package.json");
+const releasePath=path.join(dir,"release.json");
+let version="unknown";
+let patch="";
+try {
+  const pkg=JSON.parse(fs.readFileSync(packagePath,"utf8"));
+  version=String(pkg.version||version);
+} catch {}
+try {
+  const release=JSON.parse(fs.readFileSync(releasePath,"utf8"));
+  if (release && typeof release.version === "string" && release.version.trim()) version=release.version.trim();
+  const maybePatch=String(release?.patch||"").trim();
+  if (/^\d{8}-\d+$/.test(maybePatch)) patch=maybePatch;
+} catch {}
+process.stdout.write(patch ? `${version}+${patch}` : version);
+' "$dir" 2>/dev/null || printf 'unknown'
 }
 run_quiet() {
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -175,6 +197,52 @@ sqlite_runtime_ok() {
     node -e "require('sqlite3'); process.stdout.write('ok')"
   ) >> "$INSTALL_LOG" 2>&1
 }
+sqlite_package_version() {
+  [[ -f "$INSTALL_DIR/node_modules/sqlite3/package.json" ]] || return 1
+  node -e '
+const fs = require("fs");
+const pkg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+process.stdout.write(String(pkg.version || ""));
+' "$INSTALL_DIR/node_modules/sqlite3/package.json" 2>/dev/null
+}
+sqlite_host_key() {
+  node -p "[
+    process.platform,
+    process.arch,
+    process.versions.modules,
+    (() => { try { return process.report?.getReport?.().header?.glibcVersionRuntime ? 'glibc' : 'musl'; } catch { return 'unknown'; } })()
+  ].join('-')" 2>/dev/null
+}
+sqlite_cache_dir() {
+  local version="$1"
+  local host_key="$2"
+  printf '%s\n' "$INSTALL_DIR/.cache/sqlite3/${version}/${host_key}"
+}
+restore_cached_sqlite_binary() {
+  if [[ "$DRY_RUN" == "1" ]]; then return 0; fi
+  local version host_key cache_dir cached_binary target_binary
+  version="$(sqlite_package_version || true)"
+  host_key="$(sqlite_host_key || true)"
+  [[ -n "$version" && -n "$host_key" ]] || return 0
+  cache_dir="$(sqlite_cache_dir "$version" "$host_key")"
+  cached_binary="$cache_dir/node_sqlite3.node"
+  target_binary="$INSTALL_DIR/node_modules/sqlite3/build/Release/node_sqlite3.node"
+  [[ -f "$cached_binary" ]] || return 0
+  mkdir -p "$(dirname "$target_binary")"
+  cp "$cached_binary" "$target_binary"
+  printf '%s\n' "Reused cached sqlite3 binary for $host_key ($version)" >> "$INSTALL_LOG"
+}
+cache_sqlite_binary() {
+  if [[ "$DRY_RUN" == "1" ]]; then return 0; fi
+  local version host_key cache_dir target_binary
+  version="$(sqlite_package_version || true)"
+  host_key="$(sqlite_host_key || true)"
+  target_binary="$INSTALL_DIR/node_modules/sqlite3/build/Release/node_sqlite3.node"
+  [[ -n "$version" && -n "$host_key" && -f "$target_binary" ]] || return 0
+  cache_dir="$(sqlite_cache_dir "$version" "$host_key")"
+  mkdir -p "$cache_dir"
+  cp "$target_binary" "$cache_dir/node_sqlite3.node"
+}
 
 ensure_native_build_prereqs() {
   local pm
@@ -244,6 +312,24 @@ find_free_port() {
   done
   fail "No free TCP port found from $START_PORT to $max"
 }
+existing_configured_port() {
+  [[ -f "$INSTALL_DIR/.env" ]] || return 0
+  awk -F= '$1=="CADDY_UI_PORT" {print $2}' "$INSTALL_DIR/.env" 2>/dev/null | tail -1
+}
+select_runtime_port() {
+  local existing_port=""
+  if [[ -n "${CADDYUI_PORT:-}" ]]; then
+    START_PORT="$CADDYUI_PORT"
+    PORT="$(find_free_port)"
+    return 0
+  fi
+  existing_port="$(existing_configured_port || true)"
+  if [[ -n "$existing_port" ]]; then
+    PORT="$existing_port"
+    return 0
+  fi
+  PORT="$(find_free_port)"
+}
 primary_ip() {
   local ip=""
   ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
@@ -259,6 +345,8 @@ CADDY_UI_PORT=$PORT
 CADDY_UI_DATA_DIR=$DATA_DIR
 CADDY_UI_SECRET=$SECRET
 CADDY_UI_SETUP_TOKEN=$SETUP_TOKEN_VALUE
+CADDY_UI_CONFIG_MODE=$CONFIG_MODE
+CADDY_UI_CADDY_API_URL=$CADDY_API_URL
 ENV
   chmod 600 "$INSTALL_DIR/.env" || true
   if [[ "$IS_ROOT" -eq 1 ]]; then chown "$RUN_USER":"$RUN_USER" "$INSTALL_DIR/.env" 2>/dev/null || true; fi
@@ -342,6 +430,74 @@ read_tty() {
 }
 valid_domain() {
   [[ "$1" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]
+}
+select_config_mode() {
+  local answer=""
+  case "${CONFIG_MODE,,}" in
+    api|file) CONFIG_MODE="${CONFIG_MODE,,}"; return 0 ;;
+  esac
+  if [[ "${CADDYUI_ASSUME_YES:-0}" == "1" ]]; then
+    CONFIG_MODE="api"
+    return 0
+  fi
+  answer="$(read_tty "Install in API mode or file mode? [api/file] (default: api): " || true)"
+  answer="${answer:-api}"
+  answer="${answer,,}"
+  [[ "$answer" == "api" || "$answer" == "file" ]] || fail "Invalid config mode: $answer"
+  CONFIG_MODE="$answer"
+}
+caddy_api_healthy() {
+  curl -fsS "${CADDY_API_URL%/}/config/" >/dev/null 2>&1
+}
+enable_caddy_api_in_file() {
+  local file="$1"
+  local tmp
+  tmp="$(mktemp)"
+  if grep -Eq '^[[:space:]]*\{' "$file"; then
+    awk '
+      BEGIN { inserted = 0 }
+      /^[[:space:]]*\{/ && inserted == 0 {
+        print $0
+        print "\tadmin 127.0.0.1:2019"
+        inserted = 1
+        next
+      }
+      { print $0 }
+    ' "$file" > "$tmp"
+  else
+    {
+      printf "{\n\tadmin 127.0.0.1:2019\n}\n\n"
+      cat "$file"
+    } > "$tmp"
+  fi
+  if caddy validate --config "$tmp" --adapter caddyfile >> "$INSTALL_LOG" 2>&1; then
+    copy_caddyfile "$tmp" "$file"
+    rm -f "$tmp"
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+ensure_api_mode_ready() {
+  local file=""
+  if caddy_api_healthy; then
+    ok "Caddy API is reachable at $CADDY_API_URL"
+    return 0
+  fi
+  warn "Caddy API is not reachable at $CADDY_API_URL"
+  confirm "Try to enable the Caddy admin API on this machine?" yes || return 0
+  file="$(find_caddyfiles | head -1 || true)"
+  [[ -n "$file" ]] || fail "Could not find a readable Caddyfile to enable the admin API."
+  step "Enabling Caddy admin API in $file"
+  enable_caddy_api_in_file "$file" || fail "Failed to update Caddyfile for admin API. Check $INSTALL_LOG"
+  if command -v caddy >/dev/null 2>&1; then
+    run_quiet caddy reload --config "$file" --adapter caddyfile || warn "Caddy reload failed. Reload it manually after install."
+  fi
+  if caddy_api_healthy; then
+    ok "Caddy API is now reachable"
+    return 0
+  fi
+  warn "Caddy API is still not reachable. You may need to reload Caddy manually."
 }
 find_caddyfiles() {
   local paths=(
@@ -529,7 +685,9 @@ run_existing_update() {
   else
     run_quiet npm --prefix "$INSTALL_DIR" install
   fi
+  restore_cached_sqlite_binary
   ensure_sqlite_compat
+  cache_sqlite_binary
   ok "Dependencies installed"
 
   step "Building web interface"
@@ -567,6 +725,10 @@ mkdir -p "$LOG_DIR"
 step "Checking prerequisites"
 check_and_install_prerequisites
 ok "Required tools are available"
+select_config_mode
+if [[ "$CONFIG_MODE" == "api" ]]; then
+  ensure_api_mode_ready
+fi
 if [[ "$BRANCH" == "dev" ]]; then
   warn "Development branch. Not stable."
 fi
@@ -582,14 +744,9 @@ if [[ -d "$INSTALL_DIR/.git" && "${CADDYUI_FORCE_INSTALL:-0}" != "1" ]]; then
   run_existing_update
 fi
 
-if [[ -f "$INSTALL_DIR/.env" && -z "${CADDYUI_PORT:-}" ]]; then
-  existing_port="$(awk -F= '$1=="CADDY_UI_PORT" {print $2}' "$INSTALL_DIR/.env" 2>/dev/null | tail -1)"
-  if [[ -n "$existing_port" ]]; then START_PORT="$existing_port"; fi
-fi
-
-step "Selecting an available port"
-PORT="$(find_free_port)"
-ok "Selected port $PORT"
+step "Selecting runtime port"
+select_runtime_port
+ok "Using port $PORT"
 
 step "Downloading CaddyUI from GitHub"
 if [[ -d "$INSTALL_DIR/.git" ]]; then
@@ -611,7 +768,9 @@ if [[ -f "$INSTALL_DIR/package-lock.json" ]]; then
 else
   run_quiet npm --prefix "$INSTALL_DIR" install
 fi
+restore_cached_sqlite_binary
 ensure_sqlite_compat
+cache_sqlite_binary
 ok "Dependencies installed"
 
 step "Building web interface"

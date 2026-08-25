@@ -38,9 +38,28 @@ export async function createStateStore({ dataDir, dbPath, settingsPath, sessionP
       proxy_key TEXT PRIMARY KEY,
       tags_json TEXT NOT NULL,
       category TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
       updated_at INTEGER NOT NULL
     );
   `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS event_log (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      actor_username TEXT NOT NULL,
+      actor_role TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      message TEXT NOT NULL,
+      details_json TEXT NOT NULL
+    );
+  `);
+  try {
+    await db.exec(`ALTER TABLE proxy_meta ADD COLUMN description TEXT NOT NULL DEFAULT ''`);
+  } catch {}
 
   if (settingsPath && fssync.existsSync(settingsPath)) {
     const existing = await db.get('SELECT key FROM kv_store WHERE key = ?', 'settings');
@@ -148,7 +167,7 @@ export async function createStateStore({ dataDir, dbPath, settingsPath, sessionP
     },
 
     async getProxyMetaMap() {
-      const rows = await db.all('SELECT proxy_key, tags_json, category FROM proxy_meta');
+      const rows = await db.all('SELECT proxy_key, tags_json, category, description FROM proxy_meta');
       const result = {};
       for (const row of rows || []) {
         let tags = [];
@@ -156,29 +175,36 @@ export async function createStateStore({ dataDir, dbPath, settingsPath, sessionP
           const parsed = JSON.parse(String(row.tags_json || '[]'));
           if (Array.isArray(parsed)) tags = parsed.map((x) => String(x || '').trim()).filter(Boolean);
         } catch {}
-        result[row.proxy_key] = { tags, category: String(row.category || '').trim() };
+        result[row.proxy_key] = {
+          tags,
+          category: String(row.category || '').trim(),
+          description: String(row.description || '').trim(),
+        };
       }
       return result;
     },
 
-    async setProxyMeta(proxyKey, tags = [], category = '') {
+    async setProxyMeta(proxyKey, tags = [], category = '', description = '') {
       const key = String(proxyKey || '').trim();
       if (!key) return;
       const cleanedTags = [...new Set((Array.isArray(tags) ? tags : []).map((x) => String(x || '').trim()).filter(Boolean))];
       const cleanedCategory = String(category || '').trim();
+      const cleanedDescription = String(description || '').trim();
       const now = Date.now();
       await db.run(
         `
-          INSERT INTO proxy_meta (proxy_key, tags_json, category, updated_at)
-          VALUES (?, ?, ?, ?)
+          INSERT INTO proxy_meta (proxy_key, tags_json, category, description, updated_at)
+          VALUES (?, ?, ?, ?, ?)
           ON CONFLICT(proxy_key) DO UPDATE
           SET tags_json = excluded.tags_json,
               category = excluded.category,
+              description = excluded.description,
               updated_at = excluded.updated_at
         `,
         key,
         JSON.stringify(cleanedTags),
         cleanedCategory,
+        cleanedDescription,
         now
       );
     },
@@ -197,6 +223,108 @@ export async function createStateStore({ dataDir, dbPath, settingsPath, sessionP
       }
       const placeholders = keys.map(() => '?').join(', ');
       await db.run(`DELETE FROM proxy_meta WHERE proxy_key NOT IN (${placeholders})`, ...keys);
+    },
+
+    async appendEvent(event = {}) {
+      const payload = {
+        id: String(event.id || '').trim(),
+        createdAt: Number(event.createdAt || Date.now()),
+        actorUsername: String(event.actorUsername || '').trim(),
+        actorRole: String(event.actorRole || '').trim(),
+        kind: String(event.kind || '').trim(),
+        action: String(event.action || '').trim(),
+        targetType: String(event.targetType || '').trim(),
+        targetId: String(event.targetId || '').trim(),
+        status: String(event.status || '').trim(),
+        message: String(event.message || '').trim(),
+        details: event.details && typeof event.details === 'object' ? event.details : {},
+      };
+      await db.run(
+        `
+          INSERT INTO event_log (
+            id,
+            created_at,
+            actor_username,
+            actor_role,
+            kind,
+            action,
+            target_type,
+            target_id,
+            status,
+            message,
+            details_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        payload.id,
+        payload.createdAt,
+        payload.actorUsername,
+        payload.actorRole,
+        payload.kind,
+        payload.action,
+        payload.targetType,
+        payload.targetId,
+        payload.status,
+        payload.message,
+        JSON.stringify(payload.details)
+      );
+    },
+
+    async listEvents({ limit = 200 } = {}) {
+      const bounded = Math.max(10, Math.min(1000, Number(limit) || 200));
+      const rows = await db.all(
+        `
+          SELECT
+            id,
+            created_at,
+            actor_username,
+            actor_role,
+            kind,
+            action,
+            target_type,
+            target_id,
+            status,
+            message,
+            details_json
+          FROM event_log
+          ORDER BY created_at DESC
+          LIMIT ?
+        `,
+        bounded
+      );
+      return (rows || []).map((row) => {
+        let details = {};
+        try {
+          details = JSON.parse(String(row.details_json || '{}'));
+        } catch {}
+        return {
+          id: String(row.id || ''),
+          createdAt: Number(row.created_at || 0),
+          actorUsername: String(row.actor_username || ''),
+          actorRole: String(row.actor_role || ''),
+          kind: String(row.kind || ''),
+          action: String(row.action || ''),
+          targetType: String(row.target_type || ''),
+          targetId: String(row.target_id || ''),
+          status: String(row.status || ''),
+          message: String(row.message || ''),
+          details,
+        };
+      });
+    },
+
+    async pruneEvents(limit = 2000) {
+      await db.run(
+        `
+          DELETE FROM event_log
+          WHERE id IN (
+            SELECT id
+            FROM event_log
+            ORDER BY created_at DESC
+            LIMIT -1 OFFSET ?
+          )
+        `,
+        Math.max(200, Number(limit) || 2000)
+      );
     },
   };
 }

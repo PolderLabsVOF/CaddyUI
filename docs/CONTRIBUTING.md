@@ -23,6 +23,27 @@ npm install
 npm run dev
 ```
 
+## Docker sandbox
+
+For integration testing with real Caddy installed, use the sandbox:
+
+```bash
+scripts/docker-sandbox.sh up
+```
+
+The sandbox live-mounts the local project, starts CaddyUI from the working tree, runs Caddy with a generated test Caddyfile, and bootstraps a test admin account.
+
+Useful commands:
+
+```bash
+scripts/docker-sandbox.sh status
+scripts/docker-sandbox.sh logs
+scripts/docker-sandbox.sh down
+scripts/docker-sandbox.sh reset
+```
+
+The sandbox directory is `.tmp/docker-test-env` by default and is ignored by git.
+
 ## Pull requests
 
 1. Fork the repository.
@@ -30,6 +51,7 @@ npm run dev
 3. Make your changes.
 4. Run:
    ```bash
+   npm run typecheck
    npm run build
    ```
 5. Open a PR to `dev` and fill out the PR template.

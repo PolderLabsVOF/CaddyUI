@@ -6,6 +6,41 @@
 - Reorganize active development warning section in README for clarity.
 - Refactor installation instructions in README for clarity.
 
+## 0.2.4-beta - 2026-05-23
+
+### Added
+- Docker sandbox script for local beta testing with live-mounted source, Caddy, sample Caddyfile, Caddy logs, and Caddy Admin API access.
+- Templates page for reusable proxy presets.
+- Template workflow support for creating templates from scratch or loading fields from existing proxies.
+- Proxy creation support for applying saved templates.
+- Scoped editor access by allowed domain and/or category.
+- Appearance settings for dark/light mode and selectable accent colors.
+- Expanded sandbox Caddyfile examples covering snippets, reverse proxies, load balancing, internal TLS, matchers, rewrites, static files, and method/path matchers.
+
+### Changed
+- Proxies page sorting is now independent per grouped section instead of globally shared across all groups.
+- Users settings UI is now organized into collapsible, expandable account cards with clearer scope editing.
+- Templates workflow and page layout were polished for consistency with the rest of the UI.
+- Caddy Admin API requests now retry with compatible localhost/127.0.0.1 origins for local sandbox and admin-origin compatibility.
+- Production static serving now sends immutable caching for built assets and no-cache headers for HTML.
+- Frontend API calls now avoid unnecessary JSON content headers on body-less requests and handle non-JSON responses more safely.
+- Browser-local theme settings now tolerate disabled or unavailable local storage.
+
+### Security
+- Settings and Caddy API connection testing now require `admin`.
+- Scoped editors are blocked from shared template management and raw/global Caddy mutation paths.
+- Added stricter Caddy API URL normalization; only `http` and `https` URLs are accepted.
+- Encoded proxied Caddy admin path segments before forwarding to the Caddy Admin API.
+- Added extra security headers: Cross-Origin-Opener-Policy, Cross-Origin-Resource-Policy, X-DNS-Prefetch-Control, and X-Permitted-Cross-Domain-Policies.
+- Improved sensitive-action rate-limit pruning and capped stale limiter growth.
+- Added rate limiting to the Caddy stop action.
+- Overrode transitive `qs` dependency to `6.15.2` to clear the npm audit advisory.
+
+## 0.2.0-dev - 2026-05-11
+
+### Changed
+- Dev branch now reports `0.2.0-dev` and installer default channel `dev`.
+
 ## 0.2.0 - 2026-05-11
 
 ### Added
