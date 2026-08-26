@@ -10,6 +10,7 @@ import Logs from './pages/Logs.jsx';
 import Tls from './pages/Tls.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import { AuthGate, Notice, ReloadConfirmModal, Shell } from './components/common.jsx';
+import AiAssistant from './components/AiAssistant.jsx';
 
 const APP_VERSION = pkg.version;
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
@@ -19,6 +20,12 @@ const localSettings = {
   caddyConfigured: true,
   configured: true,
   caddyApiUrl: 'http://127.0.0.1:2019',
+  aiEnabled: true,
+  aiProvider: 'openai',
+  aiBaseUrl: 'http://127.0.0.1:11434',
+  aiModel: 'local-test',
+  aiAllowPrivateBaseUrl: true,
+  hasAiApiKey: true,
   logPaths: ['/var/log/caddy/access.log'],
   updateChannel: 'stable',
   trustProxyHops: 0,
@@ -455,6 +462,19 @@ export default function App() {
         busy={caddyBusy}
         onCancel={() => setReloadConfirmOpen(false)}
         onConfirm={reloadCaddyGlobal}
+      />
+      <AiAssistant
+        api={api}
+        settings={settings}
+        canAdmin={canAdmin}
+        notify={pushNotification}
+        onOpenSettings={() => setPage('settings')}
+        onActionComplete={(result) => {
+          if (result?.parsed) setConfig((current) => ({ ...current, parsed: result.parsed }));
+          refreshConfig();
+          if (result?.reloadSuggested) pushNotification({ ok: true, level: 'warning', message: 'Proxy change saved. Reload Caddy to apply it.', actionLabel: 'Reload', actionId: 'reload-caddy', eventId: result.event?.id || '' });
+          if (result?.requiresHeaderReload) setReloadConfirmOpen(true);
+        }}
       />
     </Shell>
   );
