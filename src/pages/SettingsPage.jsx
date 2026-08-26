@@ -5,6 +5,7 @@ import { Notice, TypedConfirmModal } from '../components/common.jsx';
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
 const sectionItems = [
   ['connection', 'Connection'],
+  ['ai', 'AI assistant'],
   ['security', 'Security'],
   ['appearance', 'Appearance'],
   ['account', 'Account'],
@@ -36,6 +37,12 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     caddyfilePath: settings.caddyfilePath || '',
     caddyApiUrl: settings.caddyApiUrl || 'http://127.0.0.1:2019',
     caddyApiToken: '',
+    aiEnabled: Boolean(settings.aiEnabled),
+    aiProvider: settings.aiProvider || 'openai',
+    aiBaseUrl: settings.aiBaseUrl || '',
+    aiModel: settings.aiModel || '',
+    aiApiKey: '',
+    aiAllowPrivateBaseUrl: Boolean(settings.aiAllowPrivateBaseUrl),
     logPaths: (settings.logPaths || []).join('\n'),
     trustProxyHops: String(settings.trustProxyHops ?? 0),
     allowRemoteSetup: Boolean(settings.allowRemoteSetup),
@@ -43,6 +50,8 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     allowedOrigins: (settings.allowedOrigins || []).join('\n'),
   });
   const [clearCaddyApiSecret, setClearCaddyApiSecret] = useState(false);
+  const [clearAiApiKey, setClearAiApiKey] = useState(false);
+  const [testingAi, setTestingAi] = useState(false);
   const [updateChannel, setUpdateChannel] = useState(settings.updateChannel || 'stable');
   const [msg, setMsg] = useState('');
   const [users, setUsers] = useState([]);
@@ -68,6 +77,12 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
       caddyfilePath: settings.caddyfilePath || '',
       caddyApiUrl: settings.caddyApiUrl || 'http://127.0.0.1:2019',
       caddyApiToken: '',
+      aiEnabled: Boolean(settings.aiEnabled),
+      aiProvider: settings.aiProvider || 'openai',
+      aiBaseUrl: settings.aiBaseUrl || '',
+      aiModel: settings.aiModel || '',
+      aiApiKey: '',
+      aiAllowPrivateBaseUrl: Boolean(settings.aiAllowPrivateBaseUrl),
       logPaths: (settings.logPaths || []).join('\n'),
       trustProxyHops: String(settings.trustProxyHops ?? 0),
       allowRemoteSetup: Boolean(settings.allowRemoteSetup),
@@ -75,7 +90,8 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
       allowedOrigins: (settings.allowedOrigins || []).join('\n'),
     });
     setClearCaddyApiSecret(false);
-  }, [settings.configMode, settings.caddyfilePath, settings.caddyApiUrl, settings.logPaths, settings.trustProxyHops, settings.allowRemoteSetup, settings.secureCookieMode, settings.allowedOrigins]);
+    setClearAiApiKey(false);
+  }, [settings.configMode, settings.caddyfilePath, settings.caddyApiUrl, settings.aiEnabled, settings.aiProvider, settings.aiBaseUrl, settings.aiModel, settings.aiAllowPrivateBaseUrl, settings.logPaths, settings.trustProxyHops, settings.allowRemoteSetup, settings.secureCookieMode, settings.allowedOrigins]);
 
   useEffect(() => {
     setUpdateChannel(settings.updateChannel || 'stable');
@@ -144,6 +160,12 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
         configMode: form.configMode || 'api',
         caddyfilePath: form.caddyfilePath,
         caddyApiUrl: form.caddyApiUrl,
+        aiEnabled: Boolean(form.aiEnabled),
+        aiProvider: form.aiProvider,
+        aiBaseUrl: form.aiBaseUrl,
+        aiModel: form.aiModel,
+        aiAllowPrivateBaseUrl: Boolean(form.aiAllowPrivateBaseUrl),
+        hasAiApiKey: clearAiApiKey ? false : form.aiApiKey.trim() ? true : Boolean(settings.hasAiApiKey),
         hasCaddyApiToken: clearCaddyApiSecret ? false : form.caddyApiToken.trim() ? true : Boolean(settings.hasCaddyApiToken),
         hasCaddyApiSecret: clearCaddyApiSecret ? false : form.caddyApiToken.trim() ? true : Boolean(settings.hasCaddyApiSecret || settings.hasCaddyApiToken),
         logPaths: nextLogPaths,
@@ -170,6 +192,13 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
         payload.allowRemoteSetup = Boolean(form.allowRemoteSetup);
         payload.secureCookieMode = form.secureCookieMode || 'auto';
         payload.allowedOrigins = nextAllowedOrigins;
+        payload.aiEnabled = Boolean(form.aiEnabled);
+        payload.aiProvider = form.aiProvider;
+        payload.aiBaseUrl = form.aiBaseUrl.trim();
+        payload.aiModel = form.aiModel.trim();
+        payload.aiAllowPrivateBaseUrl = Boolean(form.aiAllowPrivateBaseUrl);
+        if (form.aiApiKey.trim()) payload.aiApiKey = form.aiApiKey.trim();
+        if (clearAiApiKey) payload.aiApiKeyClear = true;
       }
       const r = await api('/api/settings', {
         method: 'POST',
@@ -179,6 +208,24 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
       setNotice('Settings saved.', r.event?.id || '');
     } catch (err) {
       setMsg(err.message);
+    }
+  };
+
+  const testAiProvider = async () => {
+    if (!canAdmin || localTest) return;
+    setTestingAi(true);
+    setMsg('');
+    try {
+      const result = await api('/api/ai/settings/test', {
+        method: 'POST',
+        body: JSON.stringify({ provider: form.aiProvider, baseUrl: form.aiBaseUrl.trim(), model: form.aiModel.trim(), apiKey: form.aiApiKey.trim(), allowPrivateBaseUrl: Boolean(form.aiAllowPrivateBaseUrl) }),
+      });
+      setNotice(result.message || 'AI provider connection succeeded.');
+    } catch (err) {
+      setMsg(err.message);
+      notify?.({ ok: false, level: 'error', message: err.message || 'AI provider test failed.' });
+    } finally {
+      setTestingAi(false);
     }
   };
 
@@ -464,6 +511,24 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
                 </div>
               )}
             </form>
+          )}
+
+          {activeSection === 'ai' && (
+            <div className="settings-card">
+              <div className="settings-section-head"><div><h3>AI assistant</h3><p>Connect a provider for guided proxy inspection and confirmed management actions.</p></div></div>
+              <div className="settings-card-body">
+                <label className="check-row"><input type="checkbox" checked={Boolean(form.aiEnabled)} onChange={(e) => setForm({ ...form, aiEnabled: e.target.checked })} disabled={!canAdmin} />Enable AI assistant</label>
+                <div className="settings-grid two">
+                  <label>Provider<select value={form.aiProvider} onChange={(e) => setForm({ ...form, aiProvider: e.target.value })} disabled={!canAdmin}><option value="openai">OpenAI-compatible</option><option value="anthropic">Anthropic-compatible</option></select></label>
+                  <label>Model<input value={form.aiModel} onChange={(e) => setForm({ ...form, aiModel: e.target.value })} readOnly={!canAdmin} placeholder={form.aiProvider === 'anthropic' ? 'claude-sonnet-4-5' : 'gpt-4.1-mini'} /></label>
+                </div>
+                <label>Base URL<input value={form.aiBaseUrl} onChange={(e) => setForm({ ...form, aiBaseUrl: e.target.value })} readOnly={!canAdmin} placeholder={form.aiProvider === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com'} /></label>
+                <label>API key<input type="password" autoComplete="new-password" value={form.aiApiKey} onChange={(e) => { setForm({ ...form, aiApiKey: e.target.value }); if (e.target.value) setClearAiApiKey(false); }} readOnly={!canAdmin} placeholder={settings.hasAiApiKey ? 'Configured — enter a new key to rotate' : 'Enter provider API key'} /></label>
+                {settings.hasAiApiKey && <label className="check-row"><input type="checkbox" checked={clearAiApiKey} onChange={(e) => { setClearAiApiKey(e.target.checked); if (e.target.checked) setForm({ ...form, aiApiKey: '' }); }} disabled={!canAdmin} />Clear configured AI API key when saving</label>}
+                <div className="ai-private-warning"><label className="check-row"><input type="checkbox" checked={Boolean(form.aiAllowPrivateBaseUrl)} onChange={(e) => setForm({ ...form, aiAllowPrivateBaseUrl: e.target.checked })} disabled={!canAdmin} />Allow private/local provider URLs</label><small>Only enable this for a trusted Ollama, LM Studio, or LAN gateway. Cloud metadata and link-local endpoints remain blocked.</small></div>
+                <div className="toolbar"><button type="button" onClick={testAiProvider} disabled={!canAdmin || testingAi || !form.aiBaseUrl.trim() || !form.aiModel.trim()}>{testingAi ? 'Testing...' : 'Test AI provider'}</button></div>
+              </div>
+            </div>
           )}
 
           {activeSection === 'security' && (

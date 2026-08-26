@@ -2656,6 +2656,213 @@ label {
   }
 }
 
+.ai-private-warning {
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn) 8%, var(--surface-2));
+}
+
+.ai-private-warning small {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+}
+
+.ai-assistant-trigger {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 42;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 14px 38px rgb(0 0 0 / 35%);
+}
+
+.ai-assistant-panel {
+  position: fixed;
+  right: 22px;
+  bottom: 84px;
+  z-index: 41;
+  width: min(460px, calc(100vw - 32px));
+  height: min(720px, calc(100dvh - 120px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: 0 22px 70px rgb(0 0 0 / 45%);
+}
+
+.ai-assistant-head,
+.ai-conversation-toolbar,
+.ai-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.ai-assistant-head {
+  justify-content: space-between;
+}
+
+.ai-assistant-head > div {
+  min-width: 0;
+}
+
+.ai-assistant-head span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.ai-assistant-head small {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-assistant-setup,
+.ai-welcome {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 260px;
+  padding: 24px;
+  text-align: center;
+}
+
+.ai-assistant-setup h3,
+.ai-assistant-setup p,
+.ai-welcome h3,
+.ai-welcome p {
+  margin: 8px 0 0;
+}
+
+.ai-assistant-setup p,
+.ai-welcome p {
+  color: var(--muted);
+}
+
+.ai-conversation-toolbar label {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+}
+
+.ai-conversation-toolbar select {
+  border: 0;
+  background: transparent;
+}
+
+.ai-message-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.ai-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ai-message.user {
+  align-items: flex-end;
+}
+
+.ai-message-content,
+.ai-thinking {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ai-message.user .ai-message-content {
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-2));
+}
+
+.ai-action-card {
+  width: 100%;
+  padding: 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.ai-action-card.danger {
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+}
+
+.ai-action-card pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0;
+  padding: 9px;
+  border-radius: var(--radius);
+  background: var(--input);
+  font-size: 12px;
+}
+
+.ai-action-card small {
+  color: var(--muted);
+}
+
+.ai-composer {
+  align-items: flex-end;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.ai-composer textarea {
+  min-height: 74px;
+  max-height: 160px;
+  resize: vertical;
+}
+
+.ai-composer .primary {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  padding: 0;
+}
+
+@media (max-width: 720px) {
+  .ai-assistant-trigger {
+    right: 14px;
+    bottom: calc(82px + env(safe-area-inset-bottom));
+  }
+
+  .ai-assistant-panel {
+    inset: 8px 8px calc(72px + env(safe-area-inset-bottom));
+    width: auto;
+    height: auto;
+    border-radius: var(--radius-lg);
+  }
+}
+
 @media (max-width: 1250px) {
   .quick-add {
     grid-template-columns: repeat(3, minmax(190px, 1fr));

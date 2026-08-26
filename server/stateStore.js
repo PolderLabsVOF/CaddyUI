@@ -57,6 +57,42 @@ export async function createStateStore({ dataDir, dbPath, settingsPath, sessionP
       details_json TEXT NOT NULL
     );
   `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_event_log_created_at ON event_log(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_event_log_kind ON event_log(kind, created_at DESC);
+    CREATE TABLE IF NOT EXISTS ai_conversations (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      title TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_conversations_user ON ai_conversations(username, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS ai_messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation ON ai_messages(conversation_id, created_at ASC);
+    CREATE TABLE IF NOT EXISTS ai_pending_actions (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      action_type TEXT NOT NULL,
+      args_json TEXT NOT NULL,
+      preview_json TEXT NOT NULL,
+      status TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      confirmed_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_pending_actions_user ON ai_pending_actions(username, created_at DESC);
+  `);
   try {
     await db.exec(`ALTER TABLE proxy_meta ADD COLUMN description TEXT NOT NULL DEFAULT ''`);
   } catch {}
@@ -325,6 +361,83 @@ export async function createStateStore({ dataDir, dbPath, settingsPath, sessionP
         `,
         Math.max(200, Number(limit) || 2000)
       );
+    },
+
+    async createAiConversation(conversation) {
+      const now = Number(conversation.createdAt || Date.now());
+      await db.run('INSERT INTO ai_conversations (id, username, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', String(conversation.id), String(conversation.username), String(conversation.title || 'New conversation'), now, now);
+      return { id: String(conversation.id), title: String(conversation.title || 'New conversation'), createdAt: now, updatedAt: now };
+    },
+
+    async listAiConversations(username) {
+      const rows = await db.all('SELECT id, title, created_at, updated_at FROM ai_conversations WHERE username = ? ORDER BY updated_at DESC LIMIT 50', String(username));
+      return (rows || []).map((row) => ({ id: row.id, title: row.title, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at) }));
+    },
+
+    async getAiConversation(id, username) {
+      const row = await db.get('SELECT id, title, created_at, updated_at FROM ai_conversations WHERE id = ? AND username = ?', String(id), String(username));
+      return row ? { id: row.id, title: row.title, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at) } : null;
+    },
+
+    async deleteAiConversation(id, username) {
+      await db.run('DELETE FROM ai_pending_actions WHERE conversation_id = ? AND username = ?', String(id), String(username));
+      await db.run('DELETE FROM ai_messages WHERE conversation_id = ? AND username = ?', String(id), String(username));
+      const result = await db.run('DELETE FROM ai_conversations WHERE id = ? AND username = ?', String(id), String(username));
+      return Number(result.changes || 0) > 0;
+    },
+
+    async appendAiMessage(message) {
+      const createdAt = Number(message.createdAt || Date.now());
+      await db.run('INSERT INTO ai_messages (id, conversation_id, username, role, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?)', String(message.id), String(message.conversationId), String(message.username), String(message.role), JSON.stringify(message.content ?? ''), createdAt);
+      await db.run('UPDATE ai_conversations SET updated_at = ? WHERE id = ? AND username = ?', createdAt, String(message.conversationId), String(message.username));
+      await db.run(`DELETE FROM ai_messages WHERE id IN (SELECT id FROM ai_messages WHERE conversation_id = ? AND username = ? ORDER BY created_at DESC LIMIT -1 OFFSET 100)`, String(message.conversationId), String(message.username));
+      return { id: String(message.id), conversationId: String(message.conversationId), role: String(message.role), content: message.content ?? '', createdAt };
+    },
+
+    async listAiMessages(conversationId, username) {
+      const rows = await db.all('SELECT id, role, content_json, created_at FROM ai_messages WHERE conversation_id = ? AND username = ? ORDER BY created_at ASC LIMIT 100', String(conversationId), String(username));
+      return (rows || []).map((row) => {
+        let content = '';
+        try { content = JSON.parse(row.content_json); } catch { content = String(row.content_json || ''); }
+        return { id: row.id, role: row.role, content, createdAt: Number(row.created_at) };
+      });
+    },
+
+    async createAiPendingAction(action) {
+      await db.run(`INSERT INTO ai_pending_actions (id, conversation_id, username, action_type, args_json, preview_json, status, idempotency_key, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`, String(action.id), String(action.conversationId), String(action.username), String(action.actionType), JSON.stringify(action.args || {}), JSON.stringify(action.preview || {}), String(action.idempotencyKey), Number(action.createdAt), Number(action.expiresAt));
+      return action;
+    },
+
+    async getAiPendingAction(id, username) {
+      const row = await db.get('SELECT * FROM ai_pending_actions WHERE id = ? AND username = ?', String(id), String(username));
+      if (!row) return null;
+      let args = {}, preview = {};
+      try { args = JSON.parse(row.args_json); } catch {}
+      try { preview = JSON.parse(row.preview_json); } catch {}
+      return { id: row.id, conversationId: row.conversation_id, username: row.username, actionType: row.action_type, args, preview, status: row.status, createdAt: Number(row.created_at), expiresAt: Number(row.expires_at), confirmedAt: Number(row.confirmed_at || 0) };
+    },
+
+    async consumeAiPendingAction(id, username) {
+      const now = Date.now();
+      const result = await db.run(`UPDATE ai_pending_actions SET status = 'executing', confirmed_at = ? WHERE id = ? AND username = ? AND status = 'pending' AND expires_at > ?`, now, String(id), String(username), now);
+      if (!Number(result.changes || 0)) return null;
+      return this.getAiPendingAction(id, username);
+    },
+
+    async finishAiPendingAction(id, username, status) {
+      await db.run('UPDATE ai_pending_actions SET status = ? WHERE id = ? AND username = ?', String(status), String(id), String(username));
+    },
+
+    async rejectAiPendingAction(id, username) {
+      const result = await db.run("UPDATE ai_pending_actions SET status = 'rejected' WHERE id = ? AND username = ? AND status = 'pending'", String(id), String(username));
+      return Number(result.changes || 0) > 0;
+    },
+
+    async pruneAiData() {
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      await db.run('DELETE FROM ai_pending_actions WHERE expires_at < ?', Date.now());
+      await db.run('DELETE FROM ai_messages WHERE conversation_id IN (SELECT id FROM ai_conversations WHERE updated_at < ?)', cutoff);
+      await db.run('DELETE FROM ai_conversations WHERE updated_at < ?', cutoff);
     },
   };
 }
