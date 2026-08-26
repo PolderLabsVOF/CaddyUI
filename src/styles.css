@@ -2656,6 +2656,21 @@ label {
   }
 }
 
+.check-row {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}
+
+.check-row input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .ai-private-warning {
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
