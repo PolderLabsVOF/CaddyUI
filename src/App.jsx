@@ -1,71 +1,23 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { parseCaddyfile } from '../server/caddyParser.js';
 import pkg from '../package.json';
-import releaseMeta from '../release.json';
 import './styles.css';
 import Proxies from './pages/Proxies.jsx';
-import Templates from './pages/Templates.jsx';
 import Middlewares from './pages/Middlewares.jsx';
 import Configuration from './pages/Configuration.jsx';
 import Logs from './pages/Logs.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import { AuthGate, Notice, ReloadConfirmModal, Shell } from './components/common.jsx';
-import AiAssistant from './components/AiAssistant.jsx';
 
-function normalizePatchVersion(value = '') {
-  const trimmed = String(value || '').trim();
-  return /^\d{8}-\d+$/.test(trimmed) ? trimmed : '';
-}
-
-function formatDisplayVersion(version = '', patch = '') {
-  const cleanVersion = String(version || '').trim() || pkg.version;
-  const cleanPatch = normalizePatchVersion(patch);
-  return cleanPatch ? `${cleanVersion}+${cleanPatch}` : cleanVersion;
-}
-
-const APP_VERSION = formatDisplayVersion(releaseMeta?.version || pkg.version, releaseMeta?.patch || '');
+const APP_VERSION = pkg.version;
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
 const emptyConfig = { path: 'Caddyfile', content: '', parsed: parseCaddyfile(''), health: {} };
-const accentValues = new Set(['violet', 'cyan', 'emerald', 'amber', 'rose']);
-
-function storageGet(key, fallback = '') {
-  try {
-    return localStorage.getItem(key) || fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function storageSet(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {}
-}
-
-function storedTheme() {
-  const value = storageGet('caddyui-theme', 'dark');
-  return value === 'light' ? 'light' : 'dark';
-}
-
-function storedAccent() {
-  const value = storageGet('caddyui-accent', 'violet');
-  return accentValues.has(value) ? value : 'violet';
-}
-
 const localSettings = {
   userConfigured: true,
   caddyConfigured: true,
   configured: true,
-  configMode: 'api',
-  caddyfilePath: 'Caddyfile',
   caddyApiUrl: 'http://127.0.0.1:2019',
-  aiEnabled: true,
-  aiProvider: 'openai',
-  aiBaseUrl: 'http://127.0.0.1:11434',
-  aiModel: 'local-test',
-  aiAllowPrivateBaseUrl: true,
-  hasAiApiKey: true,
   logPaths: ['/var/log/caddy/access.log'],
   updateChannel: 'stable',
   trustProxyHops: 0,
@@ -74,28 +26,12 @@ const localSettings = {
   allowedOrigins: [],
   username: 'local',
   role: 'admin',
-  allowedDomains: [],
-  allowedCategories: [],
-  scopedEditor: false,
-  proxyTemplates: [],
 };
 
 const api = async (path, options = {}) => {
-  const headers = { ...(options.headers || {}) };
-  const hasContentType = Object.keys(headers).some((key) => key.toLowerCase() === 'content-type');
-  const hasBody = options.body !== undefined && options.body !== null;
-  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
-  if (hasBody && !isFormData && !hasContentType) headers['Content-Type'] = 'application/json';
-  const res = await fetch(path, { credentials: 'include', ...options, headers });
-  const contentType = res.headers.get('content-type') || '';
-  const data = contentType.includes('application/json')
-    ? await res.json().catch(() => ({}))
-    : { message: await res.text().catch(() => '') };
-  if (!res.ok) {
-    const error = new Error(data.error || data.stderr || data.message || `Request failed: ${res.status}`);
-    error.payload = data;
-    throw error;
-  }
+  const res = await fetch(path, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || data.stderr || `Request failed: ${res.status}`);
   return data;
 };
 
@@ -123,25 +59,16 @@ function parseValidationWarning(result = {}) {
   return { message, canFormat };
 }
 
-function summarizeNotificationMessage(message = '', max = 160) {
-  const text = String(message || '').replace(/\s+/g, ' ').trim();
-  if (text.length <= max) return text;
-  return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
-}
-
 export default function App() {
   const [status, setStatus] = useState(localTest ? { settings: localSettings, authenticated: true, discovered: { caddyfiles: [], logfiles: [] } } : null);
   const [settings, setSettings] = useState(localTest ? localSettings : null);
   const [config, setConfig] = useState(localTest ? emptyConfig : null);
   const [health, setHealth] = useState(localTest ? {} : {});
-  const [templates, setTemplates] = useState([]);
-  const [templateToApply, setTemplateToApply] = useState(null);
   const [page, setPage] = useState('proxies');
   const [collapsed, setCollapsed] = useState(false);
-  const [theme, setTheme] = useState(storedTheme);
-  const [accent, setAccent] = useState(storedAccent);
+  const [theme, setTheme] = useState(localStorage.getItem('caddyui-theme') || 'dark');
   const [error, setError] = useState('');
-  const [appInfo, setAppInfo] = useState({ version: APP_VERSION, updateAvailable: false });
+  const [appInfo, setAppInfo] = useState({ version: APP_VERSION, updateAvailable: false, fetchError: null });
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
@@ -149,67 +76,13 @@ export default function App() {
   const [reloadConfirmOpen, setReloadConfirmOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [configLoading, setConfigLoading] = useState(false);
-  const [logsView, setLogsView] = useState('system');
-  const [selectedEventId, setSelectedEventId] = useState('');
 
   const role = settings?.role || '';
   const canEdit = canEditRole(role) || localTest;
   const canAdmin = canAdminRole(role) || localTest;
-  const scopedEditor = Boolean(settings?.scopedEditor && !canAdmin);
-  const canManageGlobal = canEdit && !scopedEditor;
-  const notificationTimers = useRef(new Map());
-  const notificationRemovalTimers = useRef(new Map());
-
-  useEffect(() => {
-    if (!scopedEditor) return;
-    if (page === 'middlewares' || page === 'configuration') setPage('proxies');
-  }, [scopedEditor, page]);
-
-  useEffect(() => () => {
-    for (const timer of notificationTimers.current.values()) window.clearTimeout(timer);
-    for (const timer of notificationRemovalTimers.current.values()) window.clearTimeout(timer);
-    notificationTimers.current.clear();
-    notificationRemovalTimers.current.clear();
-  }, []);
-
-  const finalizeNotificationDismiss = (id) => {
-    const autoTimer = notificationTimers.current.get(id);
-    if (autoTimer) {
-      window.clearTimeout(autoTimer);
-      notificationTimers.current.delete(id);
-    }
-    const removalTimer = notificationRemovalTimers.current.get(id);
-    if (removalTimer) {
-      window.clearTimeout(removalTimer);
-      notificationRemovalTimers.current.delete(id);
-    }
-    setNotifications((current) => current.filter((notification) => notification.id !== id));
-  };
 
   const dismissNotification = (id) => {
-    const autoTimer = notificationTimers.current.get(id);
-    if (autoTimer) {
-      window.clearTimeout(autoTimer);
-      notificationTimers.current.delete(id);
-    }
-    let shouldScheduleRemoval = false;
-    setNotifications((current) => current.map((notification) => {
-      if (notification.id !== id) return notification;
-      if (notification.closing) return notification;
-      shouldScheduleRemoval = true;
-      return { ...notification, closing: true };
-    }));
-    if (!shouldScheduleRemoval || notificationRemovalTimers.current.has(id)) return;
-    const removalTimer = window.setTimeout(() => finalizeNotificationDismiss(id), 220);
-    notificationRemovalTimers.current.set(id, removalTimer);
-  };
-
-  const openEventLog = (eventId = '') => {
-    const id = String(eventId || '').trim();
-    if (!id) return;
-    setSelectedEventId(id);
-    setLogsView('events');
-    setPage('logs');
+    setNotifications((current) => current.filter((notification) => notification.id !== id));
   };
 
   const pushNotification = (notification) => {
@@ -217,79 +90,31 @@ export default function App() {
     const entry = {
       durationMs: notification.durationMs ?? 5200,
       ...notification,
-      message: summarizeNotificationMessage(notification.message || ''),
-      closing: false,
       id,
     };
     setNotifications((current) => [entry, ...current].slice(0, 6));
-    const existingRemoval = notificationRemovalTimers.current.get(id);
-    if (existingRemoval) {
-      window.clearTimeout(existingRemoval);
-      notificationRemovalTimers.current.delete(id);
-    }
     if (entry.durationMs > 0) {
-      const timer = window.setTimeout(() => dismissNotification(id), entry.durationMs);
-      notificationTimers.current.set(id, timer);
+      window.setTimeout(() => dismissNotification(id), entry.durationMs);
     }
     return id;
   };
 
   const updateNotification = (id, patch) => {
-    setNotifications((current) => current.map((notification) => (notification.id === id ? { ...notification, ...patch, ...(patch?.message ? { message: summarizeNotificationMessage(patch.message) } : {}) } : notification)));
+    setNotifications((current) => current.map((notification) => (notification.id === id ? { ...notification, ...patch } : notification)));
   };
 
-  const clearNotifications = () => {
-    notifications.forEach((notification) => dismissNotification(notification.id));
-  };
-
-  const notifyConfigChangedNeedsReload = (prefix = 'Changes saved.', event = null, options = {}) => {
+  const notifyConfigChangedNeedsReload = (prefix = 'Changes saved.') => {
     if (localTest) return;
-    if (options?.skipReloadWarning) {
-      pushNotification({
-        ok: true,
-        level: options.level || 'success',
-        message: prefix,
-        eventId: event?.id || '',
-      });
-      return;
-    }
-    if ((settings?.configMode || 'api') === 'api') {
-      pushNotification({
-        ok: true,
-        level: 'success',
-        message: `${prefix} Applied live via Caddy API.`,
-        eventId: event?.id || '',
-      });
-      return;
-    }
     pushNotification({
-      ok: false,
-      level: 'warning',
-      message: `${prefix} Caddy has not been reloaded, so changes are not live yet.`,
-      actionId: 'reload-caddy',
-      actionLabel: 'Reload Caddy',
-      actionBusy: false,
-      durationMs: 9000,
-      eventId: event?.id || '',
+      ok: true,
+      level: 'success',
+      message: `${prefix} Applied live via Caddy API.`,
     });
   };
 
   const refreshHealth = async () => {
     if (localTest) return;
     try { const data = await api('/api/proxies/health'); setHealth(data.health || {}); } catch {}
-  };
-
-  const refreshTemplates = async () => {
-    if (localTest) return;
-    try {
-      const data = await api('/api/templates');
-      setTemplates(data.templates || []);
-    } catch {}
-  };
-
-  const patchHealth = (patch = {}) => {
-    if (!patch || typeof patch !== 'object') return;
-    setHealth((current) => ({ ...(current || {}), ...patch }));
   };
 
   const refreshConfig = async () => {
@@ -312,16 +137,7 @@ export default function App() {
     catch (e) { setError(e.message); }
   };
 
-  useEffect(() => {
-    const nextTheme = theme === 'light' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = nextTheme;
-    storageSet('caddyui-theme', nextTheme);
-  }, [theme]);
-  useEffect(() => {
-    const nextAccent = accentValues.has(accent) ? accent : 'violet';
-    document.documentElement.dataset.accent = nextAccent;
-    storageSet('caddyui-accent', nextAccent);
-  }, [accent]);
+  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('caddyui-theme', theme); }, [theme]);
   useEffect(() => {
     if (localTest) {
       fetch('/local-test/Caddyfile').then((r) => (r.ok ? r.text() : Promise.reject(new Error('Missing local test Caddyfile')))).then((content) => { const parsed = parseCaddyfile(content); const h = Object.fromEntries(parsed.sites.map((site) => [site.id, { local: { online: false }, domain: { online: false } }])); setConfig({ path: 'Caddyfile', content, parsed, health: h }); setHealth(h); }).catch(() => {});
@@ -330,12 +146,6 @@ export default function App() {
     api('/api/status').then((s) => { setStatus(s); setSettings(s.settings); if (s.settings.configured) { refreshConfig(); refreshAppStatus(false); } }).catch((e) => setError(e.message));
   }, []);
 
-  useEffect(() => {
-    if (localTest) return;
-    if (!status?.authenticated || !settings?.configured) return;
-    refreshTemplates();
-  }, [status?.authenticated, settings?.configured]);
-
   const validateCaddyGlobal = async () => {
     if (!canEdit) return;
     if (localTest) { pushNotification({ ok: true, message: 'Local test mode.' }); return; }
@@ -343,7 +153,7 @@ export default function App() {
     try {
       const result = await api('/api/config/validate', { method: 'POST', body: JSON.stringify({ content: config?.content || '' }) });
       if (result.ok) {
-        pushNotification({ ok: true, level: 'success', message: result.stdout || 'Validation passed.', eventId: result.event?.id || '' });
+        pushNotification({ ok: true, level: 'success', message: result.stdout || 'Validation passed.' });
       } else {
         const parsedWarning = parseValidationWarning(result);
         pushNotification({
@@ -354,11 +164,10 @@ export default function App() {
           actionLabel: parsedWarning.canFormat ? 'Run caddy fmt --overwrite' : '',
           actionBusy: false,
           durationMs: parsedWarning.canFormat ? 9000 : 6500,
-          eventId: result.event?.id || '',
         });
       }
     }
-    catch (e) { pushNotification({ ok: false, message: e.message, eventId: e.payload?.event?.id || '' }); }
+    catch (e) { pushNotification({ ok: false, message: e.message }); }
     finally { setCaddyBusy(false); }
   };
 
@@ -377,7 +186,7 @@ export default function App() {
       });
       if (!formatResult.changed) {
         dismissNotification(notificationId);
-        pushNotification({ ok: true, level: 'success', message: 'Config is already formatted.', eventId: formatResult.event?.id || '' });
+        pushNotification({ ok: true, level: 'success', message: 'Config is already formatted.' });
         return;
       }
       const nextContent = String(formatResult.content || '');
@@ -387,10 +196,10 @@ export default function App() {
       });
       setConfig((current) => ({ ...current, content: nextContent, parsed: saved.parsed, health: saved.health || current.health }));
       dismissNotification(notificationId);
-      notifyConfigChangedNeedsReload('Formatted and saved config.', saved.event || formatResult.event || null);
+      notifyConfigChangedNeedsReload('Formatted and saved config.');
     } catch (e) {
       if (notificationId) updateNotification(notificationId, { actionBusy: false });
-      pushNotification({ ok: false, level: 'error', message: e.message || 'Formatting fix failed.', eventId: e.payload?.event?.id || '' });
+      pushNotification({ ok: false, level: 'error', message: e.message || 'Formatting fix failed.' });
     } finally {
     }
   };
@@ -399,13 +208,13 @@ export default function App() {
     if (!canEdit) return;
     if (localTest) { pushNotification({ ok: true, message: 'Local test mode.' }); setReloadConfirmOpen(false); return; }
     setCaddyBusy(true); setError('');
-    try { const result = await api('/api/config/reload', { method: 'POST' }); pushNotification({ ok: result.ok, message: result.ok ? (result.stdout || 'Reloaded Caddy.') : (result.stderr || 'Reload failed.'), eventId: result.event?.id || '' }); setReloadConfirmOpen(false); }
-    catch (e) { pushNotification({ ok: false, message: e.message, eventId: e.payload?.event?.id || '' }); }
+    try { const result = await api('/api/config/reload', { method: 'POST' }); pushNotification({ ok: result.ok, message: result.ok ? (result.stdout || 'Reloaded Caddy.') : (result.stderr || 'Reload failed.') }); setReloadConfirmOpen(false); }
+    catch (e) { pushNotification({ ok: false, message: e.message }); }
     finally { setCaddyBusy(false); }
   };
 
   if (!status) return <div className="loading"><Loader2 className="spin" /> Loading CaddyUI...</div>;
-  if (!localTest && (!status.authenticated || !settings?.configured)) return <AuthGate status={status} onReady={(data) => { setStatus((prev) => ({ ...prev, ...data, settings: data.settings, authenticated: true, discovered: data.discovered || prev?.discovered })); setSettings(data.settings); if (data.settings.configured) { refreshConfig(); refreshAppStatus(false); refreshTemplates(); } }} api={api} />;
+  if (!localTest && (!status.authenticated || !settings?.configured)) return <AuthGate status={status} onReady={(data) => { setStatus((prev) => ({ ...prev, ...data, settings: data.settings, authenticated: true, discovered: data.discovered || prev?.discovered })); setSettings(data.settings); if (data.settings.configured) { refreshConfig(); refreshAppStatus(false); } }} api={api} />;
 
   const logout = async () => { if (localTest) { location.reload(); return; } await api('/api/logout', { method: 'POST' }); location.reload(); };
   const checkUpdates = async () => {
@@ -431,15 +240,14 @@ export default function App() {
         setAppInfo(baseline);
       } catch {}
       const baselineCommit = baseline?.localCommit || '';
-      const baselineVersion = baseline?.displayVersion || baseline?.version || baseline?.localVersion || APP_VERSION;
-      const targetVersion = baseline?.availableVersion || baseline?.remoteDisplayVersion || baseline?.remoteVersion || '';
+      const baselineVersion = baseline?.version || baseline?.localVersion || APP_VERSION;
+      const targetVersion = baseline?.availableVersion || baseline?.remoteVersion || '';
       setUpdateMessage(targetVersion ? `Updating to ${targetVersion}...` : 'Updating...');
 
-      const updateStart = await api('/api/app/update', {
+      await api('/api/app/update', {
         method: 'POST',
         body: JSON.stringify({ updateChannel }),
       });
-      const updateEventId = updateStart?.event?.id || '';
       const started = Date.now();
       let confirmedReadyCount = 0;
       while (Date.now() - started < 240000) {
@@ -457,8 +265,8 @@ export default function App() {
           );
           const versionChanged = Boolean(
             baselineVersion &&
-            (status.displayVersion || status.version) &&
-            baselineVersion !== (status.displayVersion || status.version)
+            status.version &&
+            baselineVersion !== status.version
           );
           const branchAligned = !status.branch || !status.currentBranch || status.branch === status.currentBranch;
           const upToDate =
@@ -477,22 +285,19 @@ export default function App() {
             setUpdateMessage('Waiting for updated app to come online...');
           }
           if (confirmedReadyCount >= 2) {
-            const nextVersion = status.displayVersion || status.version || status.localDisplayVersion || status.localVersion || targetVersion || baselineVersion;
+            const nextVersion = status.version || status.localVersion || targetVersion || baselineVersion;
             setAppInfo((prev) => ({
               ...prev,
               ...status,
               version: nextVersion,
               localVersion: nextVersion,
-              displayVersion: nextVersion,
-              localDisplayVersion: nextVersion,
               availableVersion: nextVersion,
-              remoteVersion: status.remoteDisplayVersion || status.remoteVersion || nextVersion,
-              remoteDisplayVersion: status.remoteDisplayVersion || status.remoteVersion || nextVersion,
+              remoteVersion: status.remoteVersion || nextVersion,
               updateAvailable: false,
             }));
             setUpdating(false);
             setUpdateMessage('');
-            pushNotification({ ok: true, message: `Updated to ${nextVersion}. Reloading...`, durationMs: 3000, eventId: updateEventId });
+            pushNotification({ ok: true, message: `Updated to ${nextVersion}. Reloading...`, durationMs: 3000 });
             const url = new URL(window.location.href);
             url.searchParams.set('v', String(Date.now()));
             setTimeout(() => window.location.replace(url.toString()), 600);
@@ -505,7 +310,7 @@ export default function App() {
       }
       setUpdating(false);
       setUpdateMessage('');
-      pushNotification({ ok: false, message: 'Update is still running or not ready yet. Check install log.', eventId: updateEventId });
+      pushNotification({ ok: false, message: 'Update is still running or not ready yet. Check install log.' });
     } catch (e) {
       setError(e.message);
       setUpdating(false);
@@ -529,23 +334,18 @@ export default function App() {
       canUpdate={canAdmin}
       checkingUpdates={checkingUpdates}
       updating={updating}
-      canEdit={canManageGlobal}
-      scopedEditor={scopedEditor}
+      canEdit={canEdit}
       onValidateCaddy={validateCaddyGlobal}
       onConfirmReloadCaddy={() => setReloadConfirmOpen(true)}
       caddyBusy={caddyBusy}
       appVersion={APP_VERSION}
       notifications={notifications}
       onDismissNotification={dismissNotification}
-      onClearNotifications={clearNotifications}
+      onClearNotifications={() => setNotifications([])}
       onNotificationAction={(notificationId) => {
         const current = notifications.find((notification) => notification.id === notificationId);
         if (current?.actionId === 'format-config') runFormatFixGlobal(notificationId);
         if (current?.actionId === 'reload-caddy') setReloadConfirmOpen(true);
-      }}
-      onOpenNotification={(notificationId) => {
-        const current = notifications.find((notification) => notification.id === notificationId);
-        if (current?.eventId) openEventLog(current.eventId);
       }}
     >
       {error && <Notice type="error">{error}</Notice>}
@@ -568,26 +368,7 @@ export default function App() {
           health={health}
           loading={configLoading}
           api={api}
-          templates={templates}
-          templateToApply={templateToApply}
-          onTemplateApplied={() => setTemplateToApply(null)}
           onConfigChanged={notifyConfigChangedNeedsReload}
-          onHealthPatch={patchHealth}
-        />
-      )}
-      {page === 'templates' && (
-        <Templates
-          api={api}
-          canEdit={canEdit}
-          canManageTemplates={canManageGlobal}
-          templates={templates}
-          setTemplates={setTemplates}
-          config={config}
-          onUseTemplate={(template) => {
-            setTemplateToApply({ ...template, nonce: Date.now() });
-            setPage('proxies');
-          }}
-          notify={pushNotification}
         />
       )}
       {page === 'middlewares' && (
@@ -611,28 +392,15 @@ export default function App() {
           onConfigChanged={notifyConfigChangedNeedsReload}
         />
       )}
-      {page === 'logs' && <Logs api={api} initialView={logsView} selectedEventId={selectedEventId} onSelectView={setLogsView} />}
+      {page === 'logs' && <Logs api={api} />}
       {page === 'settings' && (
-        <SettingsPage settings={settings} setSettings={setSettings} canEdit={canAdmin} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} theme={theme} setTheme={setTheme} accent={accent} setAccent={setAccent} />
+        <SettingsPage settings={settings} setSettings={setSettings} canEdit={canEdit} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} />
       )}
       <ReloadConfirmModal
         open={reloadConfirmOpen}
         busy={caddyBusy}
         onCancel={() => setReloadConfirmOpen(false)}
         onConfirm={reloadCaddyGlobal}
-      />
-      <AiAssistant
-        api={api}
-        settings={settings}
-        canAdmin={canAdmin}
-        notify={pushNotification}
-        onOpenSettings={() => setPage('settings')}
-        onActionComplete={(result) => {
-          if (result?.parsed) setConfig((current) => ({ ...current, parsed: result.parsed }));
-          refreshConfig();
-          if (result?.reloadSuggested) pushNotification({ ok: true, level: 'warning', message: 'Proxy change saved. Reload Caddy to apply it.', actionLabel: 'Reload', actionId: 'reload-caddy', eventId: result.event?.id || '' });
-          if (result?.requiresHeaderReload) setReloadConfirmOpen(true);
-        }}
       />
     </Shell>
   );

@@ -674,7 +674,7 @@ run_existing_update() {
   run_quiet git -C "$INSTALL_DIR" fetch --quiet origin "$BRANCH"
   run_quiet git -C "$INSTALL_DIR" checkout --quiet "$BRANCH"
   run_quiet git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH"
-  run_quiet git -C "$INSTALL_DIR" clean -fd
+  run_quiet git -C "$INSTALL_DIR" clean -fd -e data/ -e .env -e logs/ -e '*.log' -e '*.pid'
   ok "Source updated"
   APP_VERSION="$(app_version_from_dir "$INSTALL_DIR")"
   ok "Installing app version $APP_VERSION"

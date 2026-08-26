@@ -1,6 +1,6 @@
 {
   "name": "caddy-ui",
-  "version": "0.2.6-beta",
+  "version": "0.2.7-beta",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,6 @@
     "dev:client": "vite --host 0.0.0.0",
     "dev:server": "node server/index.js",
     "build": "vite build",
-    "release:patch": "node scripts/create-patch.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "start": "NODE_ENV=production node server/index.js",
     "typecheck": "tsc --noEmit"
@@ -35,7 +34,6 @@
     "typescript": "6.0.3"
   },
   "overrides": {
-    "dompurify": "^3.4.2",
-    "qs": "6.15.2"
+    "dompurify": "^3.4.2"
   }
 }

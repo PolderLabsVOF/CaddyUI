@@ -1,53 +1,13 @@
 # Changelog
 
-## 0.2.6-beta - 2026-08-26
-
-### Added
-- Configurable AI assistant with OpenAI-compatible and Anthropic-compatible providers, encrypted API-key storage, private per-user conversation history, and a floating chat popup.
-- AI proxy tools can inspect visible proxies and propose create, edit, enable/disable, delete, and reload actions; every mutation requires explicit confirmation and follows existing role/scope rules.
-- Optional **Remember me** login keeps trusted-device sessions active for 30 days.
-- Logs diagnostics now classify structured JSON and plain-text entries by severity with counts, filters, search, sorting, source selection, expandable details, and raw view.
-- Logs auto-refresh can be set to Off, 5, 15, or 30 seconds and remembers the browser preference.
-- Activity events now include status/kind filters, multiple sort modes, searchable details, copy support, and prominent failure output.
+## 0.2.7-beta - 2026-08-26
 
 ### Changed
-- Standard login sessions now last 12 hours instead of 4 hours.
-- Reorganize active development warning section in README for clarity.
-- Refactor installation instructions in README for clarity.
-
-### Fixed
-- Plain-text `INFO`, `NOTICE`, `DEBUG`, and `TRACE` log entries are now classified as informational instead of unknown.
-- Reload Caddy now returns JSON on success/failure instead of an Express `<pre>Internal Server Error</pre>` HTML page when the SQLite event log fails to append.
-
-## 0.2.4-beta - 2026-05-23
+- Caddy is now configured exclusively through its Admin API; the file-mode configuration path is removed from settings, server, and docs.
+- Self-update flow now preserves `data/`, `.env`, `logs/`, `*.log`, and `*.pid` when running `git clean -fd`.
 
 ### Added
-- Docker sandbox script for local beta testing with live-mounted source, Caddy, sample Caddyfile, Caddy logs, and Caddy Admin API access.
-- Templates page for reusable proxy presets.
-- Template workflow support for creating templates from scratch or loading fields from existing proxies.
-- Proxy creation support for applying saved templates.
-- Scoped editor access by allowed domain and/or category.
-- Appearance settings for dark/light mode and selectable accent colors.
-- Expanded sandbox Caddyfile examples covering snippets, reverse proxies, load balancing, internal TLS, matchers, rewrites, static files, and method/path matchers.
-
-### Changed
-- Proxies page sorting is now independent per grouped section instead of globally shared across all groups.
-- Users settings UI is now organized into collapsible, expandable account cards with clearer scope editing.
-- Templates workflow and page layout were polished for consistency with the rest of the UI.
-- Caddy Admin API requests now retry with compatible localhost/127.0.0.1 origins for local sandbox and admin-origin compatibility.
-- Production static serving now sends immutable caching for built assets and no-cache headers for HTML.
-- Frontend API calls now avoid unnecessary JSON content headers on body-less requests and handle non-JSON responses more safely.
-- Browser-local theme settings now tolerate disabled or unavailable local storage.
-
-### Security
-- Settings and Caddy API connection testing now require `admin`.
-- Scoped editors are blocked from shared template management and raw/global Caddy mutation paths.
-- Added stricter Caddy API URL normalization; only `http` and `https` URLs are accepted.
-- Encoded proxied Caddy admin path segments before forwarding to the Caddy Admin API.
-- Added extra security headers: Cross-Origin-Opener-Policy, Cross-Origin-Resource-Policy, X-DNS-Prefetch-Control, and X-Permitted-Cross-Domain-Policies.
-- Improved sensitive-action rate-limit pruning and capped stale limiter growth.
-- Added rate limiting to the Caddy stop action.
-- Overrode transitive `qs` dependency to `6.15.2` to clear the npm audit advisory.
+- Middleware picker dropdown closes when clicking outside.
 
 ## 0.2.0-dev - 2026-05-11
 
