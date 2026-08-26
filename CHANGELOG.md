@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.7-beta - 2026-08-26
+
+### Changed
+- Caddy is now configured exclusively through its Admin API; the file-mode configuration path is removed from settings, server, and docs.
+- Self-update flow now preserves `data/`, `.env`, `logs/`, `*.log`, and `*.pid` when running `git clean -fd`.
+
+### Added
+- Middleware picker dropdown closes when clicking outside.
+
 ## 0.2.0-dev - 2026-05-11
 
 ### Changed
