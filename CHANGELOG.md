@@ -3,6 +3,8 @@
 ## 0.2.5-beta - 2026-05-12
 
 ### Added
+- Configurable AI assistant with OpenAI-compatible and Anthropic-compatible providers, encrypted API-key storage, private per-user conversation history, and a floating chat popup.
+- AI proxy tools can inspect visible proxies and propose create, edit, enable/disable, delete, and reload actions; every mutation requires explicit confirmation and follows existing role/scope rules.
 - Optional **Remember me** login keeps trusted-device sessions active for 30 days.
 - Logs diagnostics now classify structured JSON and plain-text entries by severity with counts, filters, search, sorting, source selection, expandable details, and raw view.
 - Logs auto-refresh can be set to Off, 5, 15, or 30 seconds and remembers the browser preference.
@@ -14,6 +16,7 @@
 - Refactor installation instructions in README for clarity.
 
 ### Fixed
+- Plain-text `INFO`, `NOTICE`, `DEBUG`, and `TRACE` log entries are now classified as informational instead of unknown.
 - Reload Caddy now returns JSON on success/failure instead of an Express `<pre>Internal Server Error</pre>` HTML page when the SQLite event log fails to append.
 
 ## 0.2.4-beta - 2026-05-23
