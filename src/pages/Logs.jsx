@@ -89,6 +89,7 @@ function textSeverity(value = '') {
   const text = String(value || '');
   if (/\b(?:error|fatal|panic|failed|failure|exception|critical)\b/i.test(text) || /\b5\d{2}\b/.test(text)) return 'error';
   if (/\b(?:warn|warning|deprecated)\b/i.test(text) || /\b4\d{2}\b/.test(text)) return 'warning';
+  if (/\b(?:info|notice|debug|trace)\b/i.test(text)) return 'info';
   return '';
 }
 
