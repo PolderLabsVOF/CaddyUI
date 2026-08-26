@@ -71,7 +71,7 @@ Use `stable` if you want the calm path. Use `beta` or `dev` if you want newer fe
 - Built-in user authentication
 - Role-based access: `view`, `edit`, and `admin`
 - Security settings: trusted proxy hops, cookie mode, setup exposure, allowed origins
-- Config apply modes: file mode (write Caddyfile) or API mode (push via Caddy Admin API)
+- Config apply via Caddy Admin API (push to `/load` and `/adapt`)
 - Onboarding with Caddyfile and log discovery
 - Self-updates from `stable`, `beta`, or `dev`
 
@@ -80,12 +80,11 @@ Use `stable` if you want the calm path. Use `beta` or `dev` if you want newer fe
 CaddyUI reads your configured Caddy config, parses your sites, proxies, and imports, then shows them in a web interface.
 
 When you apply changes:
-- In `file` mode, CaddyUI writes to your configured `Caddyfile`, validates the result with `caddy validate`, and can reload Caddy.
-- In `api` mode, CaddyUI pushes config through the Caddy Admin API and keeps a working config cache for the editor.
+- CaddyUI pushes the generated config to Caddy's Admin API (`/load`) and keeps a working config cache for the editor.
 
 It also handles onboarding, authentication, user roles, log discovery, update channel selection, and runtime security settings.
 
-In API mode, CaddyUI exposes an authenticated Caddy API bridge under `/api/caddy/*`:
+CaddyUI exposes an authenticated Caddy API bridge under `/api/caddy/*`:
 - `POST /api/caddy/load`, `POST /api/caddy/adapt`, `POST /api/caddy/stop`
 - `GET|POST|PUT|PATCH|DELETE /api/caddy/config[/{path}]`
 - `GET|POST|PUT|PATCH|DELETE /api/caddy/id/:id[/{path}]`
@@ -107,16 +106,14 @@ The first-time setup walks you through:
 3. Selecting a detected Caddyfile or entering a path manually
 4. Selecting detected log files or adding log paths manually
 
-## Switch config mode in Settings
+## Configure Caddy in Settings
 
 1. Open **Settings**.
-2. In **Caddy configuration**, set **Config mode** to `file` or `api`.
-3. For `file` mode, set a readable/writable `Caddyfile path`.
-4. For `api` mode, set `Caddy API URL` (default `http://127.0.0.1:2019`) and optional `Caddy API secret`.
-5. Click **Save**.
+2. In **Caddy Admin API**, set `Caddy API URL` (default `http://127.0.0.1:2019`) and optional `Caddy API secret`.
+3. Click **Save**.
 
 Notes:
-- In API mode, Caddy API defaults can also come from `CADDY_UI_CADDY_API_URL` and `CADDY_UI_CADDY_API_TOKEN`.
+- Caddy API defaults can also come from `CADDY_UI_CADDY_API_URL` and `CADDY_UI_CADDY_API_TOKEN`.
 - The API secret is stored server-side; the UI only reports whether one is configured.
 
 ## Security note
@@ -132,7 +129,7 @@ Notes:
   Create, edit, and delete reusable Caddy snippets.
 
 - **Configuration**  
-  Edit the full raw config directly (from `Caddyfile` in file mode, or working config cache in API mode).
+  Edit the full raw config directly (working config cache synced to Caddy's Admin API).
 
 - **Logs**  
   View Caddy logs from configured files and `journalctl`.

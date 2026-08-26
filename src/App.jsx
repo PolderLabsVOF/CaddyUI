@@ -17,8 +17,6 @@ const localSettings = {
   userConfigured: true,
   caddyConfigured: true,
   configured: true,
-  configMode: 'api',
-  caddyfilePath: 'Caddyfile',
   caddyApiUrl: 'http://127.0.0.1:2019',
   logPaths: ['/var/log/caddy/access.log'],
   updateChannel: 'stable',
@@ -107,22 +105,10 @@ export default function App() {
 
   const notifyConfigChangedNeedsReload = (prefix = 'Changes saved.') => {
     if (localTest) return;
-    if ((settings?.configMode || 'api') === 'api') {
-      pushNotification({
-        ok: true,
-        level: 'success',
-        message: `${prefix} Applied live via Caddy API.`,
-      });
-      return;
-    }
     pushNotification({
-      ok: false,
-      level: 'warning',
-      message: `${prefix} Caddy has not been reloaded, so changes are not live yet.`,
-      actionId: 'reload-caddy',
-      actionLabel: 'Reload Caddy',
-      actionBusy: false,
-      durationMs: 9000,
+      ok: true,
+      level: 'success',
+      message: `${prefix} Applied live via Caddy API.`,
     });
   };
 

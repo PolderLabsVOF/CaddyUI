@@ -28,7 +28,14 @@ app.disable('x-powered-by');
 const PORT = Number(process.env.CADDY_UI_PORT || process.env.PORT || 8787);
 const ROOT = process.cwd();
 const APP_VERSION = JSON.parse(fssync.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
-const DATA_DIR = process.env.CADDY_UI_DATA_DIR || path.join(ROOT, 'data');
+function defaultDataDir() {
+  try {
+    if (process.getuid && process.getuid() === 0) return '/var/lib/caddyui';
+  } catch {}
+  const home = os.homedir();
+  return path.join(home || '.', '.local', 'share', 'caddyui', 'data');
+}
+const DATA_DIR = process.env.CADDY_UI_DATA_DIR || defaultDataDir();
 const DB_PATH = process.env.CADDY_UI_DB_PATH || path.join(DATA_DIR, 'caddyui.db');
 const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
 const SESSION_PATH = path.join(DATA_DIR, 'sessions.json');
@@ -37,7 +44,7 @@ const JWT_SECRET = process.env.CADDY_UI_SECRET || DEFAULT_SECRET;
 const COOKIE_NAME = 'caddyui_token';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const SETUP_TOKEN = process.env.CADDY_UI_SETUP_TOKEN || '';
-const DEFAULT_CONFIG_MODE = String(process.env.CADDY_UI_CONFIG_MODE || 'api').trim().toLowerCase() === 'file' ? 'file' : 'api';
+const DEFAULT_CONFIG_MODE = 'api';
 const DEFAULT_CADDY_API_URL = String(process.env.CADDY_UI_CADDY_API_URL || 'http://127.0.0.1:2019').trim();
 const DEFAULT_CADDY_API_TOKEN = String(process.env.CADDY_UI_CADDY_API_TOKEN || '').trim();
 const LOGIN_WINDOW_MS = Number(process.env.CADDY_UI_LOGIN_WINDOW_MS || 15 * 60 * 1000);
@@ -49,7 +56,7 @@ const LOG_ROOTS = (process.env.CADDY_UI_LOG_ROOTS || ['/var/log/caddy', '/data/c
 
 const ROLE_LEVEL = { view: 0, edit: 1, admin: 2 };
 const VALID_ROLES = new Set(['view', 'edit', 'admin']);
-const CONFIG_MODE_VALUES = new Set(['file', 'api']);
+const CONFIG_MODE_VALUES = new Set(['api']);
 const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,64}$/;
 const MAX_PASSWORD_LENGTH = 72;
 const ENV_ALLOWED_ORIGINS = (process.env.CADDY_UI_ALLOWED_ORIGINS || '')
@@ -647,24 +654,12 @@ async function saveWorkingConfig(content = '') {
 
 async function readWorkingConfig() {
   const settings = await loadSettings();
-  if (settings.configMode === 'api') {
-    const store = await stateStore;
-    const cached = await store.getJson('working_config', null);
-    if (typeof cached?.content === 'string') {
-      return { settings, content: cached.content, path: 'caddy://admin-api' };
-    }
-    if (settings.caddyfilePath) {
-      try {
-        const content = await fs.readFile(settings.caddyfilePath, 'utf8');
-        await saveWorkingConfig(content);
-        return { settings, content, path: 'caddy://admin-api' };
-      } catch {}
-    }
-    return { settings, content: '', path: 'caddy://admin-api' };
+  const store = await stateStore;
+  const cached = await store.getJson('working_config', null);
+  if (typeof cached?.content === 'string') {
+    return { settings, content: cached.content, path: 'caddy://admin-api' };
   }
-  if (!settings.caddyfilePath) throw new Error('No Caddyfile path configured.');
-  const content = await fs.readFile(settings.caddyfilePath, 'utf8');
-  return { settings, content, path: settings.caddyfilePath };
+  return { settings, content: '', path: 'caddy://admin-api' };
 }
 
 function caddyApiAuthorizationValue(token = '') {
@@ -771,33 +766,20 @@ async function caddyResponseData(response) {
 async function applyConfigContent(settings, content, { backup = false } = {}) {
   const normalized = normalizeSettings(settings);
   const configContent = String(content || '');
-  if (normalized.configMode === 'api') {
-    const response = await requestCaddyApi(normalized, '/load', {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/caddyfile' },
-      body: configContent,
-      timeoutMs: 12000,
-    });
-    if (!response.ok) {
-      const message = (await response.text()) || `Caddy API load failed (${response.status})`;
-      const error = new Error(message);
-      error.status = response.status;
-      throw error;
-    }
-    await saveWorkingConfig(configContent);
-    return { backup: '' };
+  const response = await requestCaddyApi(normalized, '/load', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/caddyfile' },
+    body: configContent,
+    timeoutMs: 12000,
+  });
+  if (!response.ok) {
+    const message = (await response.text()) || `Caddy API load failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
-
-  let backupPath = '';
-  if (backup && normalized.caddyfilePath) {
-    backupPath = `${normalized.caddyfilePath}.${new Date().toISOString().replace(/[:.]/g, '-')}.bak`;
-    try {
-      await fs.copyFile(normalized.caddyfilePath, backupPath);
-    } catch {}
-  }
-  if (!normalized.caddyfilePath) throw new Error('No Caddyfile path configured.');
-  await fs.writeFile(normalized.caddyfilePath, configContent, 'utf8');
-  return { backup: backupPath };
+  await saveWorkingConfig(configContent);
+  return { backup: '' };
 }
 
 async function tailFile(filePath, lines = 200) {
@@ -976,9 +958,6 @@ async function formatConfig(content) {
 
 async function validateConfigForSettings(settings, content) {
   const normalized = normalizeSettings(settings);
-  if (normalized.configMode !== 'api') {
-    return validateConfig(content);
-  }
   try {
     const response = await requestCaddyApi(normalized, '/adapt', {
       method: 'POST',
@@ -1216,15 +1195,12 @@ app.post('/api/setup/user', requireTrustedOrigin, requireSetupOrigin, async (req
 
 app.post('/api/setup/config', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
   const settings = await loadSettings();
-  const { caddyfilePath, logPaths = [], configMode, caddyApiUrl, caddyApiToken, caddyApiSecret, caddyApiTokenClear, caddyApiSecretClear } = req.body || {};
-  const nextConfigMode = normalizeConfigMode(configMode, settings.configMode || 'api');
+  const { caddyfilePath, logPaths = [], caddyApiUrl, caddyApiToken, caddyApiSecret, caddyApiTokenClear, caddyApiSecretClear } = req.body || {};
+  const nextConfigMode = 'api';
   const requestedCaddyfilePath = String(caddyfilePath || '').trim();
-  if (nextConfigMode === 'file' && (!requestedCaddyfilePath || !fssync.existsSync(requestedCaddyfilePath))) {
-    return res.status(400).json({ error: 'A readable Caddyfile path is required for file mode.' });
-  }
   const nextCaddyApiUrl = normalizeApiUrl(caddyApiUrl, settings.caddyApiUrl || DEFAULT_CADDY_API_URL);
-  if (nextConfigMode === 'api' && !nextCaddyApiUrl) {
-    return res.status(400).json({ error: 'Caddy API URL is required for API mode.' });
+  if (!nextCaddyApiUrl) {
+    return res.status(400).json({ error: 'Caddy API URL is required.' });
   }
 
   const allowedLogs = [];
@@ -1249,16 +1225,14 @@ app.post('/api/setup/config', requireTrustedOrigin, auth, requirePermission('edi
     logPaths: allowedLogs,
   };
   await saveSettings(next);
-  if (next.configMode === 'api') {
-    if (requestedCaddyfilePath && fssync.existsSync(requestedCaddyfilePath)) {
-      try {
-        await saveWorkingConfig(await fs.readFile(requestedCaddyfilePath, 'utf8'));
-      } catch {}
-    } else {
-      const store = await stateStore;
-      const existing = await store.getJson('working_config', null);
-      if (typeof existing?.content !== 'string') await saveWorkingConfig('');
-    }
+  if (requestedCaddyfilePath && fssync.existsSync(requestedCaddyfilePath)) {
+    try {
+      await saveWorkingConfig(await fs.readFile(requestedCaddyfilePath, 'utf8'));
+    } catch {}
+  } else {
+    const store = await stateStore;
+    const existing = await store.getJson('working_config', null);
+    if (typeof existing?.content !== 'string') await saveWorkingConfig('');
   }
   res.json({
     settings: publicSettings(next, req.user.username),
@@ -1611,26 +1585,24 @@ app.post('/api/config/format', requireTrustedOrigin, auth, requirePermission('ed
 
 app.post('/api/config/reload', requireTrustedOrigin, auth, requirePermission('edit'), async (_req, res) => {
   const settings = await loadSettings();
-  if (settings.configMode === 'api') {
-    try {
-      const { content } = await readWorkingConfig();
-      if (!content.trim()) {
-        return res.status(400).json({ ok: false, code: 400, stdout: '', stderr: 'No config content available to reload.' });
-      }
-      const response = await requestCaddyApi(settings, '/load', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/caddyfile', 'Cache-Control': 'must-revalidate' },
-        body: content,
-        timeoutMs: 12000,
-      });
-      if (!response.ok) {
-        const stderr = (await response.text()) || `Caddy API reload failed (${response.status}).`;
-        return res.status(400).json({ ok: false, code: response.status, stdout: '', stderr });
-      }
-      return res.json({ ok: true, code: 0, stdout: 'Reloaded Caddy via admin API.', stderr: '' });
-    } catch (error) {
-      return res.status(503).json({ ok: false, code: -1, stdout: '', stderr: error.message || 'Caddy API is unavailable.' });
+  try {
+    const { content } = await readWorkingConfig();
+    if (!content.trim()) {
+      return res.status(400).json({ ok: false, code: 400, stdout: '', stderr: 'No config content available to reload.' });
     }
+    const response = await requestCaddyApi(settings, '/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/caddyfile', 'Cache-Control': 'must-revalidate' },
+      body: content,
+      timeoutMs: 12000,
+    });
+    if (!response.ok) {
+      const stderr = (await response.text()) || `Caddy API reload failed (${response.status}).`;
+      return res.status(400).json({ ok: false, code: response.status, stdout: '', stderr });
+    }
+    return res.json({ ok: true, code: 0, stdout: 'Reloaded Caddy via admin API.', stderr: '' });
+  } catch (error) {
+    return res.status(503).json({ ok: false, code: -1, stdout: '', stderr: error.message || 'Caddy API is unavailable.' });
   }
   const result = await run('caddy', ['reload', '--config', settings.caddyfilePath, '--adapter', 'caddyfile']);
   if (result.code === -1) {
@@ -1784,8 +1756,6 @@ app.get('/api/settings', auth, requirePermission('view'), async (req, res) => {
 app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
   const settings = await loadSettings();
   const {
-    configMode,
-    caddyfilePath,
     caddyApiUrl,
     caddyApiToken,
     caddyApiSecret,
@@ -1797,21 +1767,10 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
     secureCookieMode,
     allowedOrigins,
   } = req.body || {};
-  const requestedMode = configMode === undefined ? settings.configMode : normalizeConfigMode(configMode, settings.configMode || 'api');
-  const requestedCaddyfilePath = String(caddyfilePath || '').trim();
+  const requestedMode = 'api';
   const requestedCaddyApiUrl = caddyApiUrl === undefined ? settings.caddyApiUrl : normalizeApiUrl(caddyApiUrl, settings.caddyApiUrl);
-  const changingCaddyfilePath = requestedCaddyfilePath !== String(settings.caddyfilePath || '');
-  if (requestedMode === 'file' && requestedCaddyfilePath && !fssync.existsSync(requestedCaddyfilePath)) {
-    return res.status(400).json({ error: 'Caddyfile path does not exist.' });
-  }
-  if (requestedMode === 'file' && !requestedCaddyfilePath) {
-    return res.status(400).json({ error: 'Caddyfile path is required in file mode.' });
-  }
-  if (requestedMode === 'api' && !requestedCaddyApiUrl) {
-    return res.status(400).json({ error: 'Caddy API URL is required in API mode.' });
-  }
-  if (changingCaddyfilePath && !hasPermission(req.user?.role, 'admin')) {
-    return res.status(403).json({ error: 'Admin permission required to change Caddyfile path.' });
+  if (!requestedCaddyApiUrl) {
+    return res.status(400).json({ error: 'Caddy API URL is required.' });
   }
   const updatingSecuritySettings =
     trustProxyHops !== undefined ||
@@ -1837,7 +1796,6 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
   const next = {
     ...settings,
     configMode: requestedMode,
-    caddyfilePath: requestedMode === 'file' ? requestedCaddyfilePath : settings.caddyfilePath,
     caddyApiUrl: requestedCaddyApiUrl,
     caddyApiToken: nextCaddyApiToken,
     logPaths: nextLogPaths,
@@ -1851,19 +1809,17 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
       allowedOrigins === undefined ? settings.allowedOrigins : normalizeAllowedOrigins(allowedOrigins),
   };
   await saveSettings(next);
-  if (next.configMode === 'api') {
-    const store = await stateStore;
-    const existing = await store.getJson('working_config', null);
-    if (typeof existing?.content !== 'string') {
-      if (settings.caddyfilePath && fssync.existsSync(settings.caddyfilePath)) {
-        try {
-          await saveWorkingConfig(await fs.readFile(settings.caddyfilePath, 'utf8'));
-        } catch {
-          await saveWorkingConfig('');
-        }
-      } else {
+  const store = await stateStore;
+  const existing = await store.getJson('working_config', null);
+  if (typeof existing?.content !== 'string') {
+    if (settings.caddyfilePath && fssync.existsSync(settings.caddyfilePath)) {
+      try {
+        await saveWorkingConfig(await fs.readFile(settings.caddyfilePath, 'utf8'));
+      } catch {
         await saveWorkingConfig('');
       }
+    } else {
+      await saveWorkingConfig('');
     }
   }
   res.json({ settings: publicSettings(next, req.user.username) });
