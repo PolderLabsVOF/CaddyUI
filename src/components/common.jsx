@@ -117,8 +117,13 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
           <div className="sidebar-footer">
           <div className="sidebar-meta">
             <span className="sidebar-version">v{shownVersion}</span>
-            <span className={`sidebar-status ${appInfo?.updateAvailable ? 'update' : 'current'}`}>
-              {updating ? 'Updating' : appInfo?.updateAvailable ? `Update v${appInfo?.availableVersion || appInfo?.remoteVersion || appInfo?.version || appVersion}` : 'Current'}
+            <span className={`sidebar-status ${appInfo?.fetchError ? 'error' : appInfo?.updateAvailable ? 'update' : 'current'}`}>
+              {appInfo?.fetchError
+                ? <span className="sidebar-status error" title={appInfo.fetchError}>Update check failed</span>
+                : updating ? 'Updating'
+                  : appInfo?.updateAvailable
+                    ? `Update v${appInfo?.availableVersion || appInfo?.remoteVersion || appInfo?.version || appVersion}`
+                    : 'Current'}
             </span>
           </div>
           <div className="sidebar-actions">

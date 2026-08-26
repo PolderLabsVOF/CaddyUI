@@ -68,7 +68,7 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('caddyui-theme') || 'dark');
   const [error, setError] = useState('');
-  const [appInfo, setAppInfo] = useState({ version: APP_VERSION, updateAvailable: false });
+  const [appInfo, setAppInfo] = useState({ version: APP_VERSION, updateAvailable: false, fetchError: null });
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');

@@ -1112,40 +1112,66 @@ async function appBranch() {
   return result.ok ? result.stdout.trim() : 'unknown';
 }
 
-async function appUpdateStatus(fetchRemote = false, channelOverride = '') {
+const APP_UPDATE_FETCH_TTL_MS = 5 * 60 * 1000;
+let lastAppUpdateFetchAt = 0;
+let lastAppUpdateFetchKey = '';
+
+async function appUpdateStatus(fetchMode = false, channelOverride = '') {
   const currentBranch = await appBranch();
   const settings = await loadSettings();
-  const { channel, branch: targetBranch } = UPDATE_CHANNELS.has(String(channelOverride || '').trim().toLowerCase())
-    ? updateTargetForChannel(channelOverride, currentBranch)
+  const overrideLc = String(channelOverride || '').trim().toLowerCase();
+  const { channel, branch: targetBranch } = UPDATE_CHANNELS.has(overrideLc)
+    ? updateTargetForChannel(overrideLc, currentBranch)
     : updateTargetFromSettings(settings, currentBranch);
-  const head = await run('git', ['rev-parse', 'HEAD'], { cwd: ROOT });
-  if (fetchRemote && targetBranch !== 'unknown') {
-    await run('git', ['fetch', '--quiet', 'origin', targetBranch], { cwd: ROOT });
+  const key = `${channel}:${targetBranch}`;
+  let fetchError = null;
+  const wantsFetch = fetchMode === true
+    || (fetchMode === 'auto'
+        && targetBranch !== 'unknown'
+        && (lastAppUpdateFetchKey !== key || Date.now() - lastAppUpdateFetchAt > APP_UPDATE_FETCH_TTL_MS));
+  if (wantsFetch) {
+    const r = await run('git', ['fetch', '--quiet', 'origin', targetBranch], { cwd: ROOT });
+    lastAppUpdateFetchAt = Date.now();
+    lastAppUpdateFetchKey = key;
+    if (!r.ok) fetchError = ((r.stderr || '').trim() || `git fetch ${targetBranch} failed`);
   }
-  const remoteHead = targetBranch === 'unknown' ? { ok: false, stdout: '' } : await run('git', ['rev-parse', `origin/${targetBranch}`], { cwd: ROOT });
+  const head = await run('git', ['rev-parse', 'HEAD'], { cwd: ROOT });
+  const remoteHead = targetBranch === 'unknown'
+    ? { ok: false, stdout: '' }
+    : await run('git', ['rev-parse', `origin/${targetBranch}`], { cwd: ROOT });
   const localCommit = head.ok ? head.stdout.trim() : '';
   const remoteCommit = remoteHead.ok ? remoteHead.stdout.trim() : '';
+  // Compare committed package.json versions, not the boot-snapshot, to avoid dirty-working-tree false positives
+  let committedLocalVersion = APP_VERSION;
+  const localPkg = await run('git', ['show', 'HEAD:package.json'], { cwd: ROOT });
+  if (localPkg.ok) {
+    try { committedLocalVersion = JSON.parse(localPkg.stdout).version || APP_VERSION; } catch {}
+  }
   let remoteVersion = APP_VERSION;
   if (targetBranch !== 'unknown') {
     const remotePkg = await run('git', ['show', `origin/${targetBranch}:package.json`], { cwd: ROOT });
     if (remotePkg.ok) {
-      try {
-        remoteVersion = JSON.parse(remotePkg.stdout).version || APP_VERSION;
-      } catch {}
+      try { remoteVersion = JSON.parse(remotePkg.stdout).version || APP_VERSION; } catch {}
     }
   }
-  const updateAvailable = Boolean(localCommit && remoteCommit && localCommit !== remoteCommit);
+  // Only fire version-string signal on history-rewrite case (SHAs match but versions differ)
+  const versionChanged = Boolean(remoteVersion && committedLocalVersion && remoteVersion !== committedLocalVersion);
+  const updateAvailable = Boolean(
+    (localCommit && remoteCommit && localCommit !== remoteCommit) ||
+    (versionChanged && remoteCommit && localCommit === remoteCommit)
+  );
   return {
     version: APP_VERSION,
-    localVersion: APP_VERSION,
+    localVersion: committedLocalVersion,
     remoteVersion,
-    availableVersion: updateAvailable ? remoteVersion : APP_VERSION,
+    availableVersion: updateAvailable ? remoteVersion : committedLocalVersion,
     branch: targetBranch,
     updateChannel: channel,
     currentBranch,
     localCommit,
     remoteCommit,
     updateAvailable,
+    fetchError,
   };
 }
 
@@ -1990,7 +2016,7 @@ app.post('/api/account/password', requireTrustedOrigin, auth, requirePermission(
 });
 
 app.get('/api/app/status', auth, requirePermission('view'), async (_req, res) => {
-  res.json(await appUpdateStatus(false));
+  res.json(await appUpdateStatus('auto'));
 });
 
 app.post('/api/app/check-updates', requireTrustedOrigin, auth, requirePermission('view'), async (req, res) => {

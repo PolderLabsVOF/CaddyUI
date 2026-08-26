@@ -323,6 +323,11 @@ select:focus {
   color: var(--accent);
 }
 
+.sidebar-status.error {
+  color: var(--bad);
+  cursor: help;
+}
+
 .sidebar-actions {
   display: grid;
   gap: 6px;

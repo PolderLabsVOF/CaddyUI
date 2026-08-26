@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Notice, TypedConfirmModal } from '../components/common.jsx';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
@@ -33,6 +33,8 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [dangerModal, setDangerModal] = useState({ open: false, kind: '', value: '' });
   const [dangerBusy, setDangerBusy] = useState(false);
+  const channelSaveTimerRef = useRef(null);
+  const channelSaveBusyRef = useRef(false);
   const configuredLogCount = form.logPaths
     .split('\n')
     .map((x) => x.trim())
@@ -61,6 +63,13 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
       .then((res) => setUsers(res.users))
       .catch(() => {});
   }, [canAdmin]);
+
+  useEffect(() => () => {
+    if (channelSaveTimerRef.current) {
+      clearTimeout(channelSaveTimerRef.current);
+      channelSaveTimerRef.current = null;
+    }
+  }, []);
 
   const setNotice = (text = '') => {
     setMsg(text);
@@ -176,6 +185,45 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     } catch (err) {
       setMsg(err.message);
     }
+  };
+
+  const persistUpdateChannel = async (nextChannel) => {
+    if (!canAdmin) return;
+    if (channelSaveBusyRef.current) return;
+    channelSaveBusyRef.current = true;
+    setMsg('');
+    setNotice('');
+    if (localTest) {
+      setSettings({ ...settings, updateChannel: nextChannel });
+      setNotice('Update channel saved in browser only.');
+      channelSaveBusyRef.current = false;
+      return;
+    }
+    try {
+      const r = await api('/api/settings/update-channel', {
+        method: 'PUT',
+        body: JSON.stringify({ updateChannel: nextChannel }),
+      });
+      setSettings(r.settings);
+      setNotice('Update channel saved.');
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      channelSaveBusyRef.current = false;
+    }
+  };
+
+  const handleUpdateChannelChange = (e) => {
+    const next = e.target.value;
+    setUpdateChannel(next);
+    setSettings((current) => ({ ...(current || {}), updateChannel: next }));
+    if (!canAdmin) return;
+    if (next === settings.updateChannel) return;
+    if (channelSaveTimerRef.current) clearTimeout(channelSaveTimerRef.current);
+    channelSaveTimerRef.current = setTimeout(() => {
+      channelSaveTimerRef.current = null;
+      persistUpdateChannel(next);
+    }, 300);
   };
 
   const addUser = async (e) => {
@@ -447,21 +495,23 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
           )}
 
           {activeSection === 'updates' && canAdmin && (
-            <form className="settings-form" onSubmit={saveUpdateChannel}>
+            <div className="settings-form">
               <div className="settings-section-head">
                 <h3>Updates</h3>
                 <p>Choose which branch channel powers update checks and installs.</p>
               </div>
               <label>
                 Update channel
-                <select value={updateChannel} onChange={(e) => { setUpdateChannel(e.target.value); setSettings((current) => ({ ...(current || {}), updateChannel: e.target.value })); }}>
+                <select value={updateChannel} onChange={handleUpdateChannelChange}>
                   <option value="stable">stable</option>
                   <option value="beta">beta</option>
                   <option value="dev">dev</option>
                 </select>
               </label>
-              <button className="primary">Save update channel</button>
-            </form>
+              <div className="settings-inline-status">
+                {msg && <Notice type={/error|invalid|failed|forbidden/i.test(msg) ? 'error' : 'success'}>{msg}</Notice>}
+              </div>
+            </div>
           )}
 
           {activeSection === 'danger' && canAdmin && (
