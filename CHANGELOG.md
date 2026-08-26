@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.5-beta - 2026-05-12
+## 0.2.6-beta - 2026-08-26
 
 ### Added
 - Configurable AI assistant with OpenAI-compatible and Anthropic-compatible providers, encrypted API-key storage, private per-user conversation history, and a floating chat popup.
