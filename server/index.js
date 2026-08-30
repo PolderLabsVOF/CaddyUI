@@ -1803,6 +1803,8 @@ app.post(
         return res.status(400).json({ error: 'lines array contained no valid positive integers' });
       }
       const { settings, content } = await readWorkingConfig();
+      const previousParsed = await parseConfigCached(content);
+      const sitesToCleanup = previousParsed.sites.filter((site) => sortedLines.includes(Number(site.line)));
       let nextContent = content;
       const errors = [];
       let applied = 0;
@@ -1821,6 +1823,9 @@ app.post(
       }
       const finalParsed = await parseConfigWithMeta(nextContent);
       await applyConfigContent(settings, nextContent);
+      for (const site of sitesToCleanup) {
+        await deleteProxyMetaForSite(site);
+      }
       const health = await checkProxyHealth(finalParsed);
       res.json({ ok: true, validation, applied, errors, content: nextContent, parsed: finalParsed, health });
     } catch (error) {
