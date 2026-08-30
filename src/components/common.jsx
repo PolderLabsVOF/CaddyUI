@@ -395,9 +395,6 @@ export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onE
         <div className="proxy-local" data-label="Local">
           <StatusDot check={healthCheck} disabled={site.disabled} />
         </div>
-        <div className="proxy-state" data-label="State">
-          <StatusDot check={healthCheck} disabled={site.disabled} />
-        </div>
         <span className="proxy-category" data-label="Category">{site.category || 'none'}</span>
         <span className="proxy-tags" data-label="Tags">{(site.tags || []).join(', ') || 'none'}</span>
         <span className="proxy-mw" data-label="Imports">{[...site.imports.map((i) => i.name), ...(site.proxies[0]?.imports?.map((i) => i.name) || [])].join(', ') || 'none'}</span>
