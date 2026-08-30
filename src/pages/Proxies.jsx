@@ -17,6 +17,7 @@ import {
   selectedImportNames,
   selectedTagNames,
 } from '../components/common.jsx';
+import { HEALTH_POLL_INTERVAL_MS } from '../App.jsx';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
 
@@ -198,6 +199,7 @@ function advancedSiteReason(site) {
 export default function Proxies({
   config,
   refresh,
+  refreshHealth,
   setConfig,
   canEdit,
   theme,
@@ -342,6 +344,12 @@ export default function Proxies({
     setSelectedTemplateId(String(template.id || ''));
     onTemplateApplied?.();
   }, [templateToApply?.nonce, templateToApply?.id, templateMap, onTemplateApplied]);
+
+  useEffect(() => {
+    if (localTest) return undefined;
+    const id = setInterval(() => refreshHealth?.(), HEALTH_POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [refreshHealth]);
 
   const applyLocal = (content) => {
     setConfig({
