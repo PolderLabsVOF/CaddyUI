@@ -149,14 +149,12 @@ function TagAutoCompleteInput({ value, onChange, suggestions, placeholder = '' }
 function disabledHealthForSite(site) {
   return {
     local: { online: false, error: 'disabled', disabled: true, host: '', port: 0 },
-    domain: { online: false, error: 'disabled', disabled: true, host: rootDomain(site.addresses?.[0] || ''), port: 443 },
   };
 }
 
 function pendingHealthForSite(site, currentHealth = {}) {
   return {
     local: { ...(currentHealth?.local || {}), online: false, pending: true, error: 'updating' },
-    domain: { ...(currentHealth?.domain || {}), pending: true },
   };
 }
 
