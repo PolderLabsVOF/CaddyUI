@@ -1563,9 +1563,7 @@ app.get(
       const { content, path } = await readWorkingConfig();
       const parsed = await parseConfigWithMeta(content);
       const wantsHealth = String(req.query.health || '0') === '1';
-      if (wantsHealth && !hasPermission(req.user?.role, 'edit')) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
+      // /api/config?health=1 is open to view users; rate limit applies.
       res.json({
         path,
         content,

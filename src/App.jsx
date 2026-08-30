@@ -12,6 +12,7 @@ import { AuthGate, Notice, ReloadConfirmModal, Shell } from './components/common
 
 const APP_VERSION = pkg.version;
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
+export const HEALTH_POLL_INTERVAL_MS = 30_000;
 const emptyConfig = { path: 'Caddyfile', content: '', parsed: parseCaddyfile(''), health: {} };
 const localSettings = {
   userConfigured: true,
@@ -114,13 +115,24 @@ export default function App() {
 
   const refreshHealth = async () => {
     if (localTest) return;
-    try { const data = await api('/api/proxies/health'); setHealth(data.health || {}); } catch {}
+    try {
+      const data = await api('/api/proxies/health');
+      setHealth(data.health || {});
+    } catch (err) {
+      pushNotification({ ok: false, level: 'warning', message: `Health check failed: ${err.message}` });
+      // Keep previous health value so transient failure doesn't flicker rows to offline.
+    }
   };
 
   const refreshConfig = async () => {
     if (localTest) return;
     setError(''); setConfigLoading(true);
-    try { const data = await api('/api/config'); setConfig((current) => ({ ...current, ...data })); refreshHealth(); }
+    try {
+      const data = await api('/api/config?health=1');
+      const { health: nextHealth, ...configFields } = data;
+      setConfig((current) => ({ ...current, ...configFields }));
+      if (nextHealth && Object.keys(nextHealth).length) setHealth(nextHealth);
+    }
     catch (e) { setError(e.message); }
     finally { setConfigLoading(false); }
   };
@@ -362,6 +374,7 @@ export default function App() {
         <Proxies
           config={config}
           refresh={refreshConfig}
+          refreshHealth={refreshHealth}
           setConfig={setConfig}
           canEdit={canEdit}
           theme={theme}
@@ -369,6 +382,7 @@ export default function App() {
           loading={configLoading}
           api={api}
           onConfigChanged={notifyConfigChangedNeedsReload}
+          onHealthPatch={(patch) => setHealth((prev) => ({ ...prev, ...patch }))}
         />
       )}
       {page === 'middlewares' && (
