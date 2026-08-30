@@ -300,9 +300,9 @@ export const previewProxyBlock = (content, draft) => {
 
 export function MiddlewarePicker({ snippets, value, onChange }) {
   const selected = selectedImportNames(value);
+  if (!snippets.length) return null;
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
-  if (!snippets.length) return null;
   const toggle = (name) => {
     const set = new Set(selected);
     if (set.has(name)) set.delete(name); else set.add(name);
