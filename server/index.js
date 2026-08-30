@@ -1543,24 +1543,40 @@ app.get('/api/caddy/reverse_proxy/upstreams', auth, requirePermission('view'), a
   }
 });
 
-app.get('/api/config', auth, requirePermission('view'), async (req, res) => {
-  try {
-    const { content, path } = await readWorkingConfig();
-    const parsed = await parseConfigWithMeta(content);
-    const wantsHealth = String(req.query.health || '0') === '1';
-    if (wantsHealth && !hasPermission(req.user?.role, 'edit')) {
-      return res.status(403).json({ error: 'Forbidden' });
+// Rate-limit only the ?health=1 branch (TCP probing of user-configured upstreams).
+// Shared 30 req/min budget with /api/proxies/health so callers cannot bypass the
+// ceiling by hitting this route instead.
+const configHealthRateLimit = requireRateLimit('config-health', 30, 60_000);
+
+app.get(
+  '/api/config',
+  auth,
+  requirePermission('view'),
+  (req, res, next) => {
+    if (String(req.query.health || '0') === '1') {
+      return configHealthRateLimit(req, res, next);
     }
-    res.json({
-      path,
-      content,
-      parsed,
-      health: wantsHealth ? await checkProxyHealth(parsed) : {},
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+    return next();
+  },
+  async (req, res) => {
+    try {
+      const { content, path } = await readWorkingConfig();
+      const parsed = await parseConfigWithMeta(content);
+      const wantsHealth = String(req.query.health || '0') === '1';
+      if (wantsHealth && !hasPermission(req.user?.role, 'edit')) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      res.json({
+        path,
+        content,
+        parsed,
+        health: wantsHealth ? await checkProxyHealth(parsed) : {},
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+);
 
 app.post('/api/config', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
   try {
@@ -1584,7 +1600,9 @@ app.post('/api/config', requireTrustedOrigin, auth, requirePermission('edit'), a
   }
 });
 
-app.get('/api/proxies/health', auth, requirePermission('edit'), async (_req, res) => {
+// view users can read health status (TCP reachability of user-configured upstreams).
+// Rate-limited to 30 req/min/IP to bound burst load.
+app.get('/api/proxies/health', auth, requirePermission('view'), requireRateLimit('proxies-health', 30, 60_000), async (_req, res) => {
   try {
     const { content } = await readWorkingConfig();
     const parsed = await parseConfigWithMeta(content);
