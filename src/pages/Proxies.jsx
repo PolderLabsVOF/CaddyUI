@@ -816,12 +816,6 @@ export default function Proxies({
                   site={site}
                   healthCheck={health?.[site.id]?.local}
                   canEdit={canEdit}
-                  toggleBusy={pendingToggleLine === String(site.line)}
-                  hostBadge={isStandardProxySite(site) ? '' : 'Advanced'}
-                  note=""
-                  upstreamText={!isStandardProxySite(site) ? site.proxies.map((proxy) => proxy.upstreams.join(' ')).filter(Boolean).join(' | ') : ''}
-                  importsText={!isStandardProxySite(site) ? siteImportNames(site).join(', ') : ''}
-                  editLabel={!isStandardProxySite(site) ? 'Edit raw' : 'Edit'}
                   onToggleDisabled={() => toggleDisabled(site)}
                   onEdit={() => startEdit(site)}
                   onDelete={(e) => setConfirmDelete(deleteConfirm(e, 'Delete proxy', site.addresses[0], () => deleteProxy(site)))}

@@ -1096,13 +1096,84 @@ label {
   gap: 6px;
   justify-content: flex-end;
   justify-self: end;
-  min-width: 210px;
+  min-width: 0;
   flex-wrap: nowrap;
+  position: relative;
 }
 
 .row-actions button {
   min-height: 34px;
   padding: 6px 10px;
+}
+
+.row-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  min-width: 30px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.row-menu-item {
+  min-height: 30px;
+}
+
+.row-menu-trigger:hover,
+.row-menu-trigger[aria-expanded='true'] {
+  background: var(--accent-soft);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.row-menu {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 12px 28px var(--shadow);
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+}
+
+.row-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 30px;
+  white-space: nowrap;
+}
+
+.row-menu-item:hover {
+  background: var(--accent-soft);
+}
+
+.row-menu-item.danger {
+  color: var(--bad);
+}
+
+.row-menu-item.danger:hover {
+  background: var(--bad-soft);
 }
 
 .middleware-form {
