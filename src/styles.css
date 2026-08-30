@@ -933,7 +933,7 @@ label {
 .proxy-table-head,
 .proxy-row-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 76px minmax(0, 0.85fr) minmax(0, 0.9fr) minmax(0, 0.95fr) 210px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 76px minmax(0, 0.85fr) minmax(0, 0.9fr) minmax(0, 0.95fr) 64px;
   column-gap: 10px;
   align-items: center;
 }
@@ -989,7 +989,7 @@ label {
 
 .proxy-row-skeleton {
   display: grid;
-  grid-template-columns: minmax(220px, 1.25fr) minmax(220px, 1fr) 76px minmax(140px, 0.85fr) minmax(160px, 0.9fr) minmax(180px, 0.95fr) 210px;
+  grid-template-columns: minmax(220px, 1.25fr) minmax(220px, 1fr) 76px minmax(140px, 0.85fr) minmax(160px, 0.9fr) minmax(180px, 0.95fr) 64px;
   gap: 10px;
   padding: 8px 14px;
   border: 1px solid var(--line);
@@ -2897,10 +2897,10 @@ label {
 
   .proxy-table-head,
   .proxy-row-main {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 210px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 64px;
   }
   .proxy-row-skeleton {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 210px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 64px;
   }
 
   .users-create-form {
@@ -3064,25 +3064,11 @@ label {
     padding: 7px 10px;
   }
 
-  .proxy-table-head {
-    display: none;
-  }
-
-  .proxy-search {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .proxy-search input {
-    max-width: none;
-  }
-
   .quick-add,
   .middleware-form,
   .middleware-builder,
   .middleware-edit-layout,
   .middleware-row,
-  .proxy-row-main,
   .edit-modal,
   .template-form,
   .users-create-form,
@@ -3110,7 +3096,6 @@ label {
     justify-content: flex-start;
   }
 
-  .proxy-row-main,
   .middleware-row {
     gap: 5px;
     padding: 9px 10px;
@@ -3323,57 +3308,6 @@ label {
     max-width: none;
   }
 
-  .proxy-host,
-  .proxy-target,
-  .proxy-local,
-  .proxy-category,
-  .proxy-tags,
-  .proxy-mw {
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-  }
-
-  .proxy-row-main > [data-label]:not(.row-actions) {
-    display: grid;
-    grid-template-columns: 84px minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-  }
-
-  .proxy-description {
-    grid-column: 2;
-  }
-
-  .proxy-row-main > [data-label]:not(.row-actions)::before {
-    content: attr(data-label);
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 650;
-    white-space: nowrap;
-  }
-
-  .proxy-local .status-dot {
-    justify-self: start;
-  }
-
-  .row-actions {
-    justify-content: flex-start;
-    justify-self: stretch;
-    min-width: 0;
-    width: 100%;
-    overflow-x: auto;
-    padding-top: 5px;
-    border-top: 1px solid var(--line);
-    margin-top: 3px;
-    gap: 6px;
-  }
-
-  .row-actions button {
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-
   .settings-subnav {
     position: static;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3433,6 +3367,78 @@ label {
   .mobile-nav button.active {
     border-color: var(--accent-line);
     background: var(--accent-soft);
+  }
+}
+
+@media (max-width: 960px) {
+  .proxy-table-head {
+    display: none;
+  }
+
+  .proxy-search {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .proxy-search input {
+    max-width: none;
+  }
+
+  .proxy-row-main {
+    grid-template-columns: 1fr;
+    gap: 5px;
+    padding: 9px 10px;
+  }
+
+  .proxy-host,
+  .proxy-target,
+  .proxy-local,
+  .proxy-category,
+  .proxy-tags,
+  .proxy-mw {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .proxy-row-main > [data-label]:not(.row-actions) {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  .proxy-description {
+    grid-column: 2;
+  }
+
+  .proxy-row-main > [data-label]:not(.row-actions)::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
+  .proxy-local .status-dot {
+    justify-self: start;
+  }
+
+  .row-actions {
+    justify-content: flex-start;
+    justify-self: stretch;
+    min-width: 0;
+    width: 100%;
+    overflow-x: auto;
+    padding-top: 5px;
+    border-top: 1px solid var(--line);
+    margin-top: 3px;
+    gap: 6px;
+  }
+
+  .row-actions button {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 }
 
