@@ -345,7 +345,7 @@ export const StatusDot = ({ check, disabled = false }) => {
   return <span className={`status-dot ${check?.online ? 'online' : 'offline'}`}>{check?.online ? 'online' : 'offline'}</span>;
 };
 
-export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onEdit, onDelete, onToggleDisabled }) {
+export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onEdit, onDelete, onToggleDisabled, selected, onToggleSelect }) {
   const addresses = Array.isArray(site.addresses) ? site.addresses : [];
   const description = String(site.description || '').trim();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -370,6 +370,17 @@ export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onE
   return (
     <div className={`proxy-row ${site.disabled ? 'disabled' : ''}`}>
       <div className={`proxy-row-main ${canEdit ? 'clickable' : ''}`} onClick={canEdit ? onEdit : undefined} role={canEdit ? 'button' : undefined} tabIndex={canEdit ? 0 : undefined} onKeyDown={canEdit ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(); } } : undefined}>
+        {canEdit && (
+          <label className="proxy-checkbox-cell">
+            <input
+              type="checkbox"
+              checked={selected?.has?.(site.id) || false}
+              onChange={(e) => { e.stopPropagation(); onToggleSelect?.(site.id); }}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Select ${site.addresses?.[0] || 'proxy'}`}
+            />
+          </label>
+        )}
         <span className="proxy-host" data-label="Host">
           {addresses.length > 0
             ? addresses.map((address, index) => {
