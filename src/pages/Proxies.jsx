@@ -913,7 +913,7 @@ export default function Proxies({
                 <h3>{groupName}</h3>
                 <span>{items.length} entries</span>
               </summary>
-              <div className="proxy-table-head">
+              <div className="proxy-table-head-row">
                 {canEdit && (
                   <span className="proxy-checkbox-cell">
                     <input
@@ -931,13 +931,15 @@ export default function Proxies({
                     />
                   </span>
                 )}
-                <button type="button" className={`table-sort ${sectionSort.key === 'host' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'host')}>Host{sortArrow(sectionKey, 'host')}</button>
-                <button type="button" className={`table-sort ${sectionSort.key === 'upstream' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'upstream')}>Upstream{sortArrow(sectionKey, 'upstream')}</button>
-                <button type="button" className={`table-sort ${sectionSort.key === 'local' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'local')}>Local{sortArrow(sectionKey, 'local')}</button>
-                <button type="button" className={`table-sort ${sectionSort.key === 'category' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'category')}>Category{sortArrow(sectionKey, 'category')}</button>
-                <button type="button" className={`table-sort ${sectionSort.key === 'tags' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'tags')}>Tags{sortArrow(sectionKey, 'tags')}</button>
-                <button type="button" className={`table-sort ${sectionSort.key === 'imports' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'imports')}>Imports{sortArrow(sectionKey, 'imports')}</button>
-                <span>Actions</span>
+                <div className="proxy-table-head">
+                  <button type="button" className={`table-sort ${sectionSort.key === 'host' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'host')}>Host{sortArrow(sectionKey, 'host')}</button>
+                  <button type="button" className={`table-sort ${sectionSort.key === 'upstream' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'upstream')}>Upstream{sortArrow(sectionKey, 'upstream')}</button>
+                  <button type="button" className={`table-sort ${sectionSort.key === 'local' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'local')}>Local{sortArrow(sectionKey, 'local')}</button>
+                  <button type="button" className={`table-sort ${sectionSort.key === 'category' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'category')}>Category{sortArrow(sectionKey, 'category')}</button>
+                  <button type="button" className={`table-sort ${sectionSort.key === 'tags' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'tags')}>Tags{sortArrow(sectionKey, 'tags')}</button>
+                  <button type="button" className={`table-sort ${sectionSort.key === 'imports' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'imports')}>Imports{sortArrow(sectionKey, 'imports')}</button>
+                  <span>Actions</span>
+                </div>
               </div>
               {items.slice(0, renderLimits[groupName] || 0).map((site) => (
                 <ProxyRow
