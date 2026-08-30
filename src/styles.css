@@ -640,6 +640,69 @@ label {
   max-width: 420px;
 }
 
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -6px 0 14px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface) 40%);
+}
+
+.bulk-action-bar .bulk-action-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.bulk-action-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.bulk-action-bar button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.bulk-action-bar button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.bulk-action-bar button.danger {
+  border-color: color-mix(in srgb, var(--danger, #c33) 60%, var(--line) 40%);
+  color: var(--danger, #c33);
+}
+
+.bulk-action-bar button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #c33) 12%, var(--surface) 88%);
+}
+
+.proxy-checkbox-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+}
+
+.proxy-checkbox-cell input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .autocomplete-field {
   position: relative;
 }
@@ -933,7 +996,7 @@ label {
 .proxy-table-head,
 .proxy-row-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 76px minmax(0, 0.85fr) minmax(0, 0.9fr) minmax(0, 0.95fr) 64px;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 76px minmax(0, 0.85fr) minmax(0, 0.9fr) minmax(0, 0.95fr) 64px;
   column-gap: 10px;
   align-items: center;
 }
@@ -989,7 +1052,7 @@ label {
 
 .proxy-row-skeleton {
   display: grid;
-  grid-template-columns: minmax(220px, 1.25fr) minmax(220px, 1fr) 76px minmax(140px, 0.85fr) minmax(160px, 0.9fr) minmax(180px, 0.95fr) 64px;
+  grid-template-columns: 28px minmax(220px, 1.25fr) minmax(220px, 1fr) 76px minmax(140px, 0.85fr) minmax(160px, 0.9fr) minmax(180px, 0.95fr) 64px;
   gap: 10px;
   padding: 8px 14px;
   border: 1px solid var(--line);
@@ -2968,10 +3031,10 @@ label {
 
   .proxy-table-head,
   .proxy-row-main {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 64px;
+    grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 64px;
   }
   .proxy-row-skeleton {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 64px;
+    grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 64px;
   }
 
   .users-create-form {

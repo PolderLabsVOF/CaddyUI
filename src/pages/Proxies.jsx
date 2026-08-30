@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { Loader2, RefreshCw, Wand2 } from 'lucide-react';
+import { Loader2, Power, RefreshCw, Trash2, Wand2 } from 'lucide-react';
 import { appendSimpleProxy, parseCaddyfile, setProxyDisabled, updateSimpleProxy } from '../../server/caddyParser.js';
 import {
   ConfirmModal,
@@ -211,6 +211,7 @@ export default function Proxies({
   onTemplateApplied,
   onConfigChanged,
   onHealthPatch,
+  notify,
 }) {
   const empty = { host: '', upstream: '', description: '', category: '', tags: '', imports: '', logMode: 'none', logPath: '' };
   const [form, setForm] = useState(empty);
@@ -225,6 +226,7 @@ export default function Proxies({
   const [busy, setBusy] = useState(false);
   const [pendingToggleLine, setPendingToggleLine] = useState('');
   const [renderLimits, setRenderLimits] = useState({});
+  const [selectedIds, setSelectedIds] = useState([]);
 
   const sites = config?.parsed?.sites || [];
   const snippets = config?.parsed?.snippets || [];
@@ -569,6 +571,91 @@ export default function Proxies({
     }
   };
 
+  const selectedIdsSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const toggleSelect = (siteId) => {
+    setSelectedIds((prev) => (prev.includes(siteId) ? prev.filter((id) => id !== siteId) : [...prev, siteId]));
+  };
+
+  const clearSelection = () => {
+    setSelectedIds([]);
+  };
+
+  const selectAllVisible = (visible) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const site of visible || []) next.add(site.id);
+      return [...next];
+    });
+  };
+
+  const bulkDisable = async (targetDisabled) => {
+    if (busy) return;
+    if (selectedIds.length === 0) return;
+    const snapshot = [...selectedIds];
+    setSelectedIds((prev) => prev.filter((id) => !snapshot.includes(id)));
+    setBusy(true);
+    setError('');
+    try {
+      const lineLookup = new Map((sites || []).map((site) => [site.id, site.line]));
+      const actions = snapshot
+        .map((id) => ({ line: lineLookup.get(id), disabled: targetDisabled }))
+        .filter((action) => action.line !== undefined && action.line !== null);
+      if (actions.length === 0) {
+        throw new Error('No matching proxies to update.');
+      }
+      const res = await api('/api/proxies/bulk-disabled', {
+        method: 'POST',
+        body: JSON.stringify({ actions }),
+      });
+      if (res.content !== undefined) {
+        setConfig((current) => ({ ...current, content: res.content, parsed: res.parsed || current.parsed }));
+      }
+      if (res.health) onHealthPatch?.(res.health);
+      notify?.({ ok: true, message: `${res.applied ?? actions.length} proxies ${targetDisabled ? 'disabled' : 'enabled'}` });
+    } catch (err) {
+      setSelectedIds(snapshot);
+      setError(err.message);
+      notify?.({ ok: false, message: `Bulk ${targetDisabled ? 'disable' : 'enable'} failed: ${err.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (busy) return;
+    if (selectedIds.length === 0) return;
+    if (typeof window !== 'undefined' && !window.confirm(`Delete ${selectedIds.length} selected proxies?`)) return;
+    const snapshot = [...selectedIds];
+    setSelectedIds((prev) => prev.filter((id) => !snapshot.includes(id)));
+    setBusy(true);
+    setError('');
+    try {
+      const lineLookup = new Map((sites || []).map((site) => [site.id, site.line]));
+      const lines = snapshot
+        .map((id) => lineLookup.get(id))
+        .filter((line) => line !== undefined && line !== null);
+      if (lines.length === 0) {
+        throw new Error('No matching proxies to delete.');
+      }
+      const res = await api('/api/proxies/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ lines }),
+      });
+      if (res.content !== undefined) {
+        setConfig((current) => ({ ...current, content: res.content, parsed: res.parsed || current.parsed }));
+      }
+      if (res.health) onHealthPatch?.(res.health);
+      notify?.({ ok: true, message: `${res.applied ?? lines.length} proxies deleted` });
+    } catch (err) {
+      setSelectedIds(snapshot);
+      setError(err.message);
+      notify?.({ ok: false, message: `Bulk delete failed: ${err.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const toggleSort = (sectionKey, key) => {
     setSectionSorts((current) => {
       const active = current[sectionKey] || defaultSectionSort;
@@ -621,6 +708,22 @@ export default function Proxies({
         <span>{standardCount} standard</span>
         <span>{advancedCount} advanced</span>
       </div>
+
+      {selectedIds.length > 0 && (
+        <div className="bulk-action-bar" role="toolbar" aria-label="Bulk actions">
+          <span className="bulk-action-count">{selectedIds.length} selected</span>
+          <button type="button" onClick={() => bulkDisable(false)} disabled={busy}>
+            <Power size={14} /> Enable
+          </button>
+          <button type="button" onClick={() => bulkDisable(true)} disabled={busy}>
+            <Power size={14} /> Disable
+          </button>
+          <button type="button" onClick={bulkDelete} disabled={busy} className="danger">
+            <Trash2 size={14} /> Delete
+          </button>
+          <button type="button" onClick={clearSelection} disabled={busy}>Clear selection</button>
+        </div>
+      )}
 
       {error && <Notice type="error">{error}</Notice>}
 
@@ -793,6 +896,9 @@ export default function Proxies({
         {groupedEntries.map(([groupName, items]) => {
           const sectionKey = `${viewMode}:${groupName}`;
           const sectionSort = sectionSortFor(sectionKey);
+          const sectionSelectedCount = items.reduce((sum, site) => (selectedIdsSet.has(site.id) ? sum + 1 : sum), 0);
+          const allInSectionSelected = items.length > 0 && sectionSelectedCount === items.length;
+          const someInSectionSelected = sectionSelectedCount > 0 && sectionSelectedCount < items.length;
           return (
             <details
               className="proxy-group"
@@ -808,6 +914,23 @@ export default function Proxies({
                 <span>{items.length} entries</span>
               </summary>
               <div className="proxy-table-head">
+                {canEdit && (
+                  <span className="proxy-checkbox-cell">
+                    <input
+                      type="checkbox"
+                      checked={allInSectionSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someInSectionSelected && !allInSectionSelected;
+                      }}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        if (e.target.checked) selectAllVisible(filteredSites);
+                        else clearSelection();
+                      }}
+                      aria-label="Select all visible"
+                    />
+                  </span>
+                )}
                 <button type="button" className={`table-sort ${sectionSort.key === 'host' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'host')}>Host{sortArrow(sectionKey, 'host')}</button>
                 <button type="button" className={`table-sort ${sectionSort.key === 'upstream' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'upstream')}>Upstream{sortArrow(sectionKey, 'upstream')}</button>
                 <button type="button" className={`table-sort ${sectionSort.key === 'local' ? 'active' : ''}`} onClick={() => toggleSort(sectionKey, 'local')}>Local{sortArrow(sectionKey, 'local')}</button>
@@ -822,12 +945,14 @@ export default function Proxies({
                   site={site}
                   healthCheck={health?.[site.id]?.local}
                   canEdit={canEdit}
+                  selected={selectedIdsSet}
+                  onToggleSelect={toggleSelect}
                   onToggleDisabled={() => toggleDisabled(site)}
                   onEdit={() => startEdit(site)}
                   onDelete={(e) => setConfirmDelete(deleteConfirm(e, 'Delete proxy', site.addresses[0], () => deleteProxy(site)))}
                 />
               ))}
-              {(renderLimits[groupName] || 0) < items.length && <div className="proxy-row-skeleton"><span /><span /><span /><span /><span /><span /><span /></div>}
+              {(renderLimits[groupName] || 0) < items.length && <div className="proxy-row-skeleton"><span /><span /><span /><span /><span /><span /><span /><span /></div>}
             </details>
           );
         })}

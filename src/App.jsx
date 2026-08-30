@@ -383,6 +383,7 @@ export default function App() {
           api={api}
           onConfigChanged={notifyConfigChangedNeedsReload}
           onHealthPatch={(patch) => setHealth((prev) => ({ ...prev, ...patch }))}
+          notify={pushNotification}
         />
       )}
       {page === 'middlewares' && (
