@@ -1,0 +1,49 @@
+{
+  "$schema": "https://caddyui.dev/schemas/feature_list.v1.json",
+  "description": "Machine-readable state for the caddy-ui project. The current ledger tracks the Proxies table overhaul work that landed on beta across commits 1dcd023..05be9cc.",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "Proxies table overhaul",
+      "description": "Six-phase rework of src/pages/Proxies.jsx and src/components/common.jsx covering the React #310 guard fix, the probeTarget health-check fix, the three-dot row menu with a 7-column grid, the live health-polling wiring, multi-select + bulk action endpoints, per-site meta cleanup in bulk-delete, and the 14-test vitest suite with the @linda responsive-breakpoint fixes.",
+      "behavior": "npm test passes 14/14; npm run typecheck clean; npm run build clean; @linda audit clean; bulk-delete and single-row delete share the per-site meta.json single-write invariant.",
+      "verification": "npm test; npm run typecheck; npm run build; vitest run --root src src/__tests__/",
+      "state": "passing",
+      "wip_holder": null,
+      "wip": 0,
+      "tests_passed": 14,
+      "latest_commit": "05be9cc",
+      "next_phase": "verify-e2e-and-release",
+      "evidence_collected": true,
+      "evidence": "Merged to beta across six waves (1dcd023..05be9cc). Phase 1 66fc7a2/9ea0db5 React #310 guard-before-hooks fix; Phase 2 61f8cac probeTarget health-check fix (drop private-IP gate, drop public-domain probe); Phase 3 b6f6e2b + 7ca5f8f + e482346 three-dot row menu, 7-column grid, checkbox out of .proxy-row-main, 960px breakpoint collapse; Phase 4 9560c66 + c87ff3e + e951692 30s health polling in <Proxies>, /api/config?health=1 gated by view permission, onHealthPatch optimistic wiring; Phase 5 0a0b9f8 + 7572b30 bulk-disabled and bulk-delete endpoints plus multi-select + select-all header + bulk action bar; Phase 6 5339221 + a00d021 + 2b95fd1 + 11c8598 + f0348b9 + 05be9cc per-site meta cleanup in bulk-delete, vitest + @testing-library deps, 14-case vitest suite, and the three @linda responsive-breakpoint fixes.",
+      "commit": "05be9cc",
+      "category": "ui",
+      "layer": "frontend",
+      "owner": "@brenda",
+      "scope": [
+        "src/pages/Proxies.jsx",
+        "src/components/common.jsx",
+        "src/App.jsx",
+        "server/index.js",
+        "server/stateStore.js",
+        "src/__tests__/components/ProxyRow.test.jsx",
+        "src/__tests__/pages/Proxies.bulk.test.jsx",
+        "src/__tests__/server/checkProxyHealth.test.js",
+        "src/__tests__/server/probeTarget.test.js",
+        "src/__tests__/wiring/HealthPolling.test.jsx",
+        "src/__tests__/setup.js",
+        "vitest.config.js",
+        "package.json",
+        "PROGRESS.md",
+        "feature_list.json"
+      ],
+      "created": "2026-08-25",
+      "passed": "2026-08-30",
+      "notes": [
+        "files did not exist before this commit; this commit is the ledger initialization, not a stale-file update",
+        "outstanding before release: E2E verification by @kevin, push beta to origin/beta, tag and publish v0.2.11-beta",
+        "schema is a local projection — no upstream Bizar feature ledger governs this file"
+      ]
+    }
+  ]
+}
