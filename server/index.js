@@ -816,27 +816,27 @@ function tcpCheck(host, port, timeout = 1800) {
 // — exactly the canonical CaddyUI use case — without preventing any real
 // SSRF, because Caddy itself is already configured to talk to those
 // upstreams. The TCP probe is observability only.
-async function checkProxyHealth(parsed) {
-  async function probeTarget(host = '', port = 0) {
-    const value = String(host || '').trim();
-    if (!value) return { online: false, error: 'missing', host: '', port };
-    const ipVersion = net.isIP(value);
-    if (ipVersion > 0) {
-      const direct = await tcpCheck(value, port);
-      return { ...direct, host: value, port };
-    }
-    try {
-      const resolved = await dns.lookup(value);
-      const resolvedAddress = String(resolved.address || '');
-      if (!resolvedAddress) return { online: false, error: 'lookup_failed', host: value, port };
-      // Connect to the already-validated IP to avoid a second DNS resolution step.
-      const direct = await tcpCheck(resolvedAddress, port);
-      return { ...direct, host: value, port };
-    } catch (error) {
-      return { online: false, error: error.code || error.message || 'lookup_failed', host: value, port };
-    }
+async function probeTarget(host = '', port = 0) {
+  const value = String(host || '').trim();
+  if (!value) return { online: false, error: 'missing', host: '', port };
+  const ipVersion = net.isIP(value);
+  if (ipVersion > 0) {
+    const direct = await tcpCheck(value, port);
+    return { ...direct, host: value, port };
   }
+  try {
+    const resolved = await dns.lookup(value);
+    const resolvedAddress = String(resolved.address || '');
+    if (!resolvedAddress) return { online: false, error: 'lookup_failed', host: value, port };
+    // Connect to the already-validated IP to avoid a second DNS resolution step.
+    const direct = await tcpCheck(resolvedAddress, port);
+    return { ...direct, host: value, port };
+  } catch (error) {
+    return { online: false, error: error.code || error.message || 'lookup_failed', host: value, port };
+  }
+}
 
+async function checkProxyHealth(parsed) {
   const results = {};
   await Promise.all(
     (parsed.sites || []).map(async (site) => {
@@ -2165,6 +2165,15 @@ if (process.env.NODE_ENV === 'production') {
 
 loadSettings().catch(() => {});
 
-app.listen(PORT, () => {
-  console.log(`CaddyUI API listening on :${PORT}`);
-});
+// Avoid binding the production HTTP port when the module is imported by
+// the test runner. Vitest sets `process.env.VITEST`; the `import.meta.vitest`
+// guard covers any future runner that may not set the env var.
+const isRunningUnderVitest = process.env.VITEST === 'true' || Boolean(import.meta.vitest);
+
+export { probeTarget, tcpCheck, checkProxyHealth };
+
+if (!isRunningUnderVitest) {
+  app.listen(PORT, () => {
+    console.log(`CaddyUI API listening on :${PORT}`);
+  });
+}
