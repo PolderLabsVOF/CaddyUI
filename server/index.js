@@ -1732,6 +1732,103 @@ app.post('/api/proxies/:line/disabled', requireTrustedOrigin, auth, requirePermi
   }
 });
 
+app.post(
+  '/api/proxies/bulk-disabled',
+  requireTrustedOrigin,
+  auth,
+  requirePermission('edit'),
+  requireRateLimit('proxies-bulk-disabled', 12, 60_000),
+  async (req, res) => {
+    try {
+      const actions = Array.isArray(req.body?.actions) ? req.body.actions : null;
+      if (!actions || actions.length === 0 || actions.length > 200) {
+        return res.status(400).json({ error: 'actions array required, 1-200 entries' });
+      }
+      const { settings, content } = await readWorkingConfig();
+      let nextContent = content;
+      const errors = [];
+      let applied = 0;
+      for (const action of actions) {
+        if (
+          !action ||
+          typeof action.line === 'undefined' ||
+          typeof action.disabled !== 'boolean'
+        ) {
+          errors.push({ line: action?.line, message: 'invalid shape' });
+          continue;
+        }
+        try {
+          nextContent = setProxyDisabled(nextContent, {
+            siteLine: action.line,
+            disabled: action.disabled,
+          });
+          applied++;
+        } catch (err) {
+          errors.push({ line: action.line, message: err.message });
+        }
+      }
+      const validation = await validateConfigForSettings(settings, nextContent);
+      if (!validation.ok && !validation.unavailable) {
+        const parsed = await parseConfigWithMeta(nextContent);
+        return res.status(400).json({ error: 'Generated Caddyfile did not validate.', validation, parsed });
+      }
+      const finalParsed = await parseConfigWithMeta(nextContent);
+      await applyConfigContent(settings, nextContent);
+      const health = await checkProxyHealth(finalParsed);
+      res.json({ ok: true, validation, applied, errors, content: nextContent, parsed: finalParsed, health });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+);
+
+app.post(
+  '/api/proxies/bulk-delete',
+  requireTrustedOrigin,
+  auth,
+  requirePermission('edit'),
+  requireRateLimit('proxies-bulk-delete', 12, 60_000),
+  async (req, res) => {
+    try {
+      const lines = Array.isArray(req.body?.lines) ? req.body.lines : null;
+      if (!lines || lines.length === 0 || lines.length > 200) {
+        return res.status(400).json({ error: 'lines array required, 1-200 entries' });
+      }
+      // Sort descending so deleting a higher line first does not invalidate lower line numbers.
+      const sortedLines = [...lines]
+        .map((line) => Number(line))
+        .filter((line) => Number.isFinite(line) && line > 0)
+        .sort((a, b) => b - a);
+      if (!sortedLines.length) {
+        return res.status(400).json({ error: 'lines array contained no valid positive integers' });
+      }
+      const { settings, content } = await readWorkingConfig();
+      let nextContent = content;
+      const errors = [];
+      let applied = 0;
+      for (const line of sortedLines) {
+        try {
+          nextContent = deleteBlockAtLine(nextContent, line);
+          applied++;
+        } catch (err) {
+          errors.push({ line, message: err.message });
+        }
+      }
+      const validation = await validateConfigForSettings(settings, nextContent);
+      if (!validation.ok && !validation.unavailable) {
+        const parsed = await parseConfigWithMeta(nextContent);
+        return res.status(400).json({ error: 'Generated Caddyfile did not validate.', validation, parsed });
+      }
+      const finalParsed = await parseConfigWithMeta(nextContent);
+      await applyConfigContent(settings, nextContent);
+      const health = await checkProxyHealth(finalParsed);
+      res.json({ ok: true, validation, applied, errors, content: nextContent, parsed: finalParsed, health });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+);
+
 app.post('/api/middlewares', requireTrustedOrigin, auth, requirePermission('edit'), async (req, res) => {
   try {
     const { settings, content } = await readWorkingConfig();
