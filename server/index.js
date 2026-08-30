@@ -807,13 +807,21 @@ function tcpCheck(host, port, timeout = 1800) {
   });
 }
 
+// probeTarget runs TCP reachability checks against hosts already present in
+// the user's Caddyfile. Only `edit` users can mutate that file via
+// POST /api/proxies/:line and friends. `view` users never reach this path
+// (gated by `requirePermission('view')` on /api/proxies/health and on
+// /api/config?health=1). The previous `privateIp` guard produced false
+// negatives on every install whose upstream is a Docker bridge or LAN host
+// — exactly the canonical CaddyUI use case — without preventing any real
+// SSRF, because Caddy itself is already configured to talk to those
+// upstreams. The TCP probe is observability only.
 async function checkProxyHealth(parsed) {
   async function probeTarget(host = '', port = 0) {
     const value = String(host || '').trim();
     if (!value) return { online: false, error: 'missing', host: '', port };
     const ipVersion = net.isIP(value);
     if (ipVersion > 0) {
-      if (privateIp(value)) return { online: false, error: 'blocked-private-address', host: value, port };
       const direct = await tcpCheck(value, port);
       return { ...direct, host: value, port };
     }
@@ -821,9 +829,6 @@ async function checkProxyHealth(parsed) {
       const resolved = await dns.lookup(value);
       const resolvedAddress = String(resolved.address || '');
       if (!resolvedAddress) return { online: false, error: 'lookup_failed', host: value, port };
-      if (privateIp(resolvedAddress)) {
-        return { online: false, error: 'blocked-private-address', host: value, port };
-      }
       // Connect to the already-validated IP to avoid a second DNS resolution step.
       const direct = await tcpCheck(resolvedAddress, port);
       return { ...direct, host: value, port };
@@ -838,21 +843,14 @@ async function checkProxyHealth(parsed) {
       if (site.disabled) {
         results[site.id] = {
           local: { online: false, error: 'disabled', disabled: true, host: '', port: 0 },
-          domain: { online: false, error: 'disabled', disabled: true, host: splitHostPort(site.addresses?.[0] || '').host, port: 443 },
         };
         return;
       }
-      const domain = site.addresses?.[0] || '';
       const upstream = site.proxies?.[0]?.upstreams?.[0] || '';
       const target = splitHostPort(upstream);
-      const domainHost = splitHostPort(domain).host;
-      const [local, domainResult] = await Promise.all([
-        probeTarget(target.host, target.port),
-        probeTarget(domainHost, 443),
-      ]);
+      const local = await probeTarget(target.host, target.port);
       results[site.id] = {
         local,
-        domain: domainResult,
       };
     })
   );
