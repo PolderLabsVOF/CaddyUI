@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, Menu, MessageSquare, Moon, ScrollText, ServerCog, Settings, Shield, SidebarClose, Sun } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, Menu, MessageSquare, Moon, MoreHorizontal, Pencil, Power, ScrollText, ServerCog, Settings, Shield, SidebarClose, Sun, Trash2 } from 'lucide-react';
 import { updateSimpleProxy } from '../../server/caddyParser.js';
 
 export const pageItems = [
@@ -348,6 +348,25 @@ export const StatusDot = ({ check, disabled = false }) => {
 export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onEdit, onDelete, onToggleDisabled }) {
   const addresses = Array.isArray(site.addresses) ? site.addresses : [];
   const description = String(site.description || '').trim();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuContainerRef = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    function onMouseDown(event) {
+      if (menuContainerRef.current && !menuContainerRef.current.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    }
+    function onKeyDown(event) {
+      if (event.key === 'Escape') setMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
   return (
     <div className={`proxy-row ${site.disabled ? 'disabled' : ''}`}>
       <div className={`proxy-row-main ${canEdit ? 'clickable' : ''}`} onClick={canEdit ? onEdit : undefined} role={canEdit ? 'button' : undefined} tabIndex={canEdit ? 0 : undefined} onKeyDown={canEdit ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(); } } : undefined}>
@@ -376,17 +395,37 @@ export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onE
         <div className="proxy-local" data-label="Local">
           <StatusDot check={healthCheck} disabled={site.disabled} />
         </div>
-        <span className={`proxy-state ${site.disabled ? 'disabled' : 'enabled'}`} data-label="State">{site.disabled ? 'disabled' : 'enabled'}</span>
+        <div className="proxy-state" data-label="State">
+          <StatusDot check={healthCheck} disabled={site.disabled} />
+        </div>
         <span className="proxy-category" data-label="Category">{site.category || 'none'}</span>
         <span className="proxy-tags" data-label="Tags">{(site.tags || []).join(', ') || 'none'}</span>
         <span className="proxy-mw" data-label="Imports">{[...site.imports.map((i) => i.name), ...(site.proxies[0]?.imports?.map((i) => i.name) || [])].join(', ') || 'none'}</span>
-        <div className="row-actions">
+        <div className="row-actions" ref={menuContainerRef}>
           {canEdit && (
-            <>
-              <button type="button" onClick={(e) => { e.stopPropagation(); onToggleDisabled(); }}>{site.disabled ? 'Enable' : 'Disable'}</button>
-              <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(); }}>Edit</button>
-              <button type="button" className="danger" onClick={(e) => { e.stopPropagation(); onDelete(e); }}>Delete</button>
-            </>
+            <button
+              type="button"
+              className="row-menu-trigger"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="Row actions"
+              onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+            >
+              <MoreHorizontal size={16} />
+            </button>
+          )}
+          {menuOpen && canEdit && (
+            <div className="row-menu" role="menu">
+              <button role="menuitem" type="button" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onEdit(site); }} className="row-menu-item">
+                <Pencil size={14} /> Edit
+              </button>
+              <button role="menuitem" type="button" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onToggleDisabled(site); }} className="row-menu-item">
+                <Power size={14} /> {site.disabled ? 'Enable' : 'Disable'}
+              </button>
+              <button role="menuitem" type="button" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(e); }} className="row-menu-item danger">
+                <Trash2 size={14} /> Delete
+              </button>
+            </div>
           )}
         </div>
       </div>
