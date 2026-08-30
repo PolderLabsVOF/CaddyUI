@@ -10,7 +10,9 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "start": "NODE_ENV=production node server/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
@@ -28,10 +30,16 @@
     "vite": "8.0.10"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.6",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "@vitest/coverage-v8": "4.1.11",
     "concurrently": "9.2.1",
-    "typescript": "6.0.3"
+    "happy-dom": "^15.0.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
   },
   "overrides": {
     "dompurify": "^3.4.2"
