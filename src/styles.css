@@ -121,6 +121,46 @@ select:focus {
   outline-offset: 2px;
 }
 
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--input);
+  color: var(--accent-contrast);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+input[type="checkbox"]::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  transform: scale(0);
+  transition: transform 120ms ease;
+  background: currentColor;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 2px;
+}
+
 .primary {
   border-color: color-mix(in srgb, var(--accent-line) 70%, var(--accent) 30%);
   background: var(--accent);
@@ -604,10 +644,7 @@ label {
 }
 
 .remember-login input {
-  width: 18px;
-  height: 18px;
   margin: 0;
-  accent-color: var(--accent);
 }
 
 .remember-login small {
@@ -643,7 +680,9 @@ label {
 .bulk-action-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
+  row-gap: 8px;
   margin: -6px 0 14px;
   padding: 8px 14px;
   border: 1px solid var(--line);
@@ -697,9 +736,6 @@ label {
 }
 
 .proxy-checkbox-cell input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -2819,10 +2855,7 @@ label {
 }
 
 .check-row input {
-  width: 18px;
-  height: 18px;
   margin: 0;
-  accent-color: var(--accent);
 }
 
 .ai-private-warning {
@@ -3044,8 +3077,25 @@ label {
     padding-right: 20px;
   }
 
+  .proxy-table-head,
+  .proxy-row-main {
+    grid-template-columns:
+      minmax(0, 1.2fr)
+      minmax(0, 1.4fr)
+      76px
+      minmax(0, 0.85fr)
+      64px;
+  }
+
   .proxy-row-skeleton {
-    grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 72px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 64px;
+    grid-template-columns: 28px minmax(0, 1.2fr) minmax(0, 1.4fr) 76px minmax(0, 0.85fr) 64px;
+  }
+
+  .proxy-table-head [data-label="Category"],
+  .proxy-table-head [data-label="Tags"],
+  .proxy-row-main [data-label="Category"],
+  .proxy-row-main [data-label="Tags"] {
+    display: none;
   }
 
   .users-create-form {
@@ -3588,6 +3638,24 @@ label {
   }
 }
 
+@media (max-width: 720px) {
+  .proxy-checkbox-cell {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  .row-actions {
+    overflow-x: visible;
+    flex-wrap: wrap;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .proxy-row-main > [data-label]:not(.row-actions) {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+}
+
 .monaco-editor textarea,
 .monaco-editor input,
 .monaco-editor select {
@@ -3649,11 +3717,6 @@ label {
 
 .import-option:hover {
   background: var(--accent-soft);
-}
-
-.import-option input {
-  width: 16px;
-  height: 16px;
 }
 
 .import-option small {
