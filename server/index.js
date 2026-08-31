@@ -580,7 +580,11 @@ function authenticatedUser(req) {
   }
 }
 
+// Module-level hook so tests can swap in a stub `run` without monkey-patching
+// `node:child_process`. See `setRunForTests` below.
+let __runForTestsImpl = null;
 function run(command, args, options = {}) {
+  if (__runForTestsImpl) return __runForTestsImpl(command, args, options);
   return new Promise((resolve) => {
     const child = spawn(command, args, { shell: false, ...options });
     let stdout = '';
@@ -594,6 +598,10 @@ function run(command, args, options = {}) {
     child.on('error', (err) => resolve({ ok: false, code: -1, stdout, stderr: err.message }));
     child.on('close', (code) => resolve({ ok: code === 0, code, stdout, stderr }));
   });
+}
+
+function setRunForTests(impl) {
+  __runForTestsImpl = typeof impl === 'function' ? impl : null;
 }
 
 async function scanExistingFiles(candidates) {
@@ -1152,17 +1160,36 @@ async function appUpdateStatus(fetchMode = false, channelOverride = '') {
       try { remoteVersion = JSON.parse(remotePkg.stdout).version || APP_VERSION; } catch {}
     }
   }
+  // Inspect the highest v* tag so a tag-only bump (same SHA, same package.json
+  // content, but a new tag pointing at HEAD) is still surfaced as an update.
+  // `git tag --list v* --sort=-v:refname` returns versions newest-first, so
+  // the first non-empty line is the latest tag.
+  let latestTag = '';
+  const tagList = await run('git', ['tag', '--list', 'v*', '--sort=-v:refname'], { cwd: ROOT });
+  if (tagList.ok && tagList.stdout.trim()) {
+    latestTag = tagList.stdout.trim().split('\n')[0].replace(/^v/, '');
+  }
+  let tagAhead = false;
+  if (latestTag && committedLocalVersion) {
+    try {
+      const semver = (await import('semver')).default;
+      tagAhead = semver.gt(latestTag, committedLocalVersion);
+    } catch {}
+  }
   // Only fire version-string signal on history-rewrite case (SHAs match but versions differ)
   const versionChanged = Boolean(remoteVersion && committedLocalVersion && remoteVersion !== committedLocalVersion);
   const updateAvailable = Boolean(
     (localCommit && remoteCommit && localCommit !== remoteCommit) ||
-    (versionChanged && remoteCommit && localCommit === remoteCommit)
+    (versionChanged && remoteCommit && localCommit === remoteCommit) ||
+    (tagAhead && remoteCommit && localCommit === remoteCommit)
   );
   return {
     version: APP_VERSION,
     localVersion: committedLocalVersion,
     remoteVersion,
-    availableVersion: updateAvailable ? remoteVersion : committedLocalVersion,
+    availableVersion: tagAhead
+      ? latestTag
+      : (updateAvailable ? remoteVersion : committedLocalVersion),
     branch: targetBranch,
     updateChannel: channel,
     currentBranch,
@@ -2175,7 +2202,7 @@ loadSettings().catch(() => {});
 // guard covers any future runner that may not set the env var.
 const isRunningUnderVitest = process.env.VITEST === 'true' || Boolean(import.meta.vitest);
 
-export { probeTarget, tcpCheck, checkProxyHealth };
+export { probeTarget, tcpCheck, checkProxyHealth, appUpdateStatus, setRunForTests };
 
 if (!isRunningUnderVitest) {
   app.listen(PORT, () => {

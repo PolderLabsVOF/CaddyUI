@@ -1,6 +1,6 @@
 {
   "name": "caddy-ui",
-  "version": "0.2.10-beta",
+  "version": "0.2.11-beta",
   "private": true,
   "type": "module",
   "scripts": {
@@ -25,6 +25,7 @@
     "lucide-react": "1.14.0",
     "react": "19.2.5",
     "react-dom": "19.2.5",
+    "semver": "7.7.4",
     "sqlite": "^5.1.1",
     "sqlite3": "^6.0.1",
     "vite": "8.0.10"
