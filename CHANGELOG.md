@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.16-beta - 2026-09-01
+### Added
+- AI assistant now mirrors the user's Caddyfile format conventions when proposing create or edit actions. The assistant context includes a `formatGuide` (indent unit + width, quote style, line endings, host naming convention), `sampleBlocks` (canonical example site blocks from the current config), `snippets` (declaed middleware snippets with bodies), and `snippetUsage` (declared / referenced / orphan). The system prompt instructs the model to match the user's indentation, quoting, and line endings, and to reuse existing snippet names rather than invent new ones.
+- AI-created proxy blocks now use the user's detected indentation. `appendSimpleProxy` reads the indent unit from the current config (tab by default; otherwise the smallest common unit of 8/4/2 spaces), so newly appended site blocks match the surrounding file instead of being forced to tabs.
+
+### Changed
+- AI context payload sent to the provider is now structured and capped (60K chars total, 2400 bytes for snippet bodies) instead of being a raw `JSON.stringify` blob, so format-mirroring instructions and example blocks are guaranteed to reach the model.
+
 ## 0.2.15-beta - 2026-09-01
 ### Added
 - AI assistant messages now render Markdown (bold, italic, inline code, fenced code blocks, ordered/unordered lists, GFM-style pipe tables, and links) via an in-house renderer in `src/components/markdown.jsx`. HTML is escaped before token substitution.
