@@ -54,14 +54,74 @@ function providerEndpoint(baseUrl, provider) {
   return parsed.toString();
 }
 
-async function readJsonResponse(response) {
+async function readProviderResponse(response) {
   const text = await response.text();
   if (text.length > 2_000_000) throw new Error('AI provider response exceeded the size limit.');
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('text/event-stream')) {
+    return { data: parseSseStream(text), streamed: true };
+  }
+  if (!text) return { data: {}, streamed: false };
   try {
-    return text ? JSON.parse(text) : {};
+    return { data: JSON.parse(text), streamed: false };
   } catch {
     throw new Error(`AI provider returned invalid JSON (${response.status}).`);
   }
+}
+
+function parseSseStream(body) {
+  const aggregated = {
+    id: '',
+    object: 'chat.completion',
+    model: '',
+    choices: [{ index: 0, message: { role: 'assistant', content: '' }, finish_reason: null }],
+    usage: null,
+  };
+  for (const rawLine of body.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith(':')) continue;
+    if (!line.startsWith('data:')) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === '[DONE]') continue;
+    let event;
+    try {
+      event = JSON.parse(payload);
+    } catch {
+      continue;
+    }
+    if (event.id && !aggregated.id) aggregated.id = event.id;
+    if (event.model && !aggregated.model) aggregated.model = event.model;
+    const choice = Array.isArray(event.choices) ? event.choices[0] : null;
+    if (!choice) continue;
+    const delta = choice.delta || {};
+    if (typeof delta.content === 'string') {
+      aggregated.choices[0].message.content = (aggregated.choices[0].message.content || '') + delta.content;
+    } else if (Array.isArray(delta.content)) {
+      const text = delta.content.filter((part) => part?.type === 'text' || typeof part?.text === 'string').map((part) => part.text || '').join('');
+      if (text) aggregated.choices[0].message.content = (aggregated.choices[0].message.content || '') + text;
+    }
+    if (Array.isArray(delta.tool_calls)) {
+      aggregated.choices[0].message.tool_calls = aggregated.choices[0].message.tool_calls || [];
+      for (const call of delta.tool_calls) {
+        const existing = aggregated.choices[0].message.tool_calls[call.index ?? 0];
+        if (existing) {
+          if (call.function?.arguments) existing.function.arguments = (existing.function.arguments || '') + (call.function.arguments || '');
+        } else {
+          aggregated.choices[0].message.tool_calls[call.index ?? aggregated.choices[0].message.tool_calls.length] = {
+            id: call.id || '',
+            type: call.type || 'function',
+            function: { name: call.function?.name || '', arguments: call.function?.arguments || '' },
+          };
+        }
+      }
+    }
+    if (choice.finish_reason) aggregated.choices[0].finish_reason = choice.finish_reason;
+    if (event.usage) aggregated.usage = event.usage;
+  }
+  if (aggregated.choices[0].message.tool_calls) {
+    aggregated.choices[0].message.tool_calls = aggregated.choices[0].message.tool_calls.filter(Boolean);
+  }
+  return aggregated;
 }
 
 function openAiTools(tools = []) {
@@ -70,7 +130,7 @@ function openAiTools(tools = []) {
 
 export async function callAiProvider({ provider, baseUrl, apiKey, model, system, messages, tools = [], signal }) {
   const endpoint = providerEndpoint(baseUrl, provider);
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
   let body;
   if (provider === 'anthropic') {
     headers['x-api-key'] = apiKey;
@@ -81,13 +141,14 @@ export async function callAiProvider({ provider, baseUrl, apiKey, model, system,
     body = {
       model,
       max_tokens: 1600,
+      stream: false,
       messages: [{ role: 'system', content: system }, ...messages],
       tools: openAiTools(tools),
       tool_choice: 'auto',
     };
   }
   const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body), signal, redirect: 'error' });
-  const data = await readJsonResponse(response);
+  const { data } = await readProviderResponse(response);
   if (!response.ok) {
     const message = data?.error?.message || data?.error || data?.message || `AI provider request failed (${response.status}).`;
     throw new Error(String(message).slice(0, 500));

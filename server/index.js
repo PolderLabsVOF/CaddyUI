@@ -21,6 +21,8 @@ import {
   setProxyDisabled,
 } from './caddyParser.js';
 import { createStateStore } from './stateStore.js';
+import { decryptAiApiKey, encryptAiApiKey } from './aiCrypto.js';
+import { callAiProvider, validateAiBaseUrl } from './aiProviders.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -375,6 +377,15 @@ function normalizeSettings(settings) {
     caddyfilePath: base.caddyfilePath || '',
     caddyApiUrl: normalizeApiUrl(base.caddyApiUrl, DEFAULT_CADDY_API_URL),
     caddyApiToken: String(base.caddyApiToken ?? DEFAULT_CADDY_API_TOKEN).trim(),
+    aiEnabled: Boolean(base.aiEnabled),
+    aiProvider: base.aiProvider === 'anthropic' ? 'anthropic' : 'openai',
+    aiBaseUrl: String(base.aiBaseUrl || '').trim(),
+    aiModel: String(base.aiModel || '').trim(),
+    aiAllowPrivateBaseUrl: Boolean(base.aiAllowPrivateBaseUrl),
+    aiApiKeyEncrypted:
+      base.aiApiKeyEncrypted && typeof base.aiApiKeyEncrypted === 'object' && base.aiApiKeyEncrypted.version === 1
+        ? base.aiApiKeyEncrypted
+        : null,
     logPaths: Array.isArray(base.logPaths) ? base.logPaths : COMMON_LOGS,
     updateChannel: UPDATE_CHANNELS.has(base.updateChannel) ? base.updateChannel : 'stable',
     trustProxyHops: normalizeTrustProxyHops(base.trustProxyHops, ENV_TRUST_PROXY_HOPS),
@@ -459,6 +470,12 @@ function publicSettings(settings, currentUsername = '') {
     caddyApiUrl: normalized.caddyApiUrl || '',
     hasCaddyApiToken: Boolean(normalized.caddyApiToken),
     hasCaddyApiSecret: Boolean(normalized.caddyApiToken),
+    aiEnabled: Boolean(normalized.aiEnabled),
+    aiProvider: normalized.aiProvider,
+    aiBaseUrl: normalized.aiBaseUrl || '',
+    aiModel: normalized.aiModel || '',
+    aiAllowPrivateBaseUrl: Boolean(normalized.aiAllowPrivateBaseUrl),
+    hasAiApiKey: Boolean(normalized.aiApiKeyEncrypted),
     logPaths: normalized.logPaths || COMMON_LOGS,
     updateChannel: normalized.updateChannel || 'stable',
     trustProxyHops: normalized.trustProxyHops ?? 0,
@@ -489,6 +506,12 @@ function statusSettings(settings, authenticated, currentUsername = '') {
     caddyApiUrl: normalized.caddyApiUrl || '',
     hasCaddyApiToken: Boolean(normalized.caddyApiToken),
     hasCaddyApiSecret: Boolean(normalized.caddyApiToken),
+    aiEnabled: Boolean(normalized.aiEnabled),
+    aiProvider: normalized.aiProvider,
+    aiBaseUrl: normalized.aiBaseUrl || '',
+    aiModel: normalized.aiModel || '',
+    aiAllowPrivateBaseUrl: Boolean(normalized.aiAllowPrivateBaseUrl),
+    hasAiApiKey: Boolean(normalized.aiApiKeyEncrypted),
     logPaths: normalized.logPaths || COMMON_LOGS,
     updateChannel: normalized.updateChannel || 'stable',
     trustProxyHops: normalized.trustProxyHops ?? 0,
@@ -1935,6 +1958,13 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
     allowRemoteSetup,
     secureCookieMode,
     allowedOrigins,
+    aiEnabled,
+    aiProvider,
+    aiBaseUrl,
+    aiModel,
+    aiAllowPrivateBaseUrl,
+    aiApiKey,
+    aiApiKeyClear,
   } = req.body || {};
   const requestedMode = 'api';
   const requestedCaddyApiUrl = caddyApiUrl === undefined ? settings.caddyApiUrl : normalizeApiUrl(caddyApiUrl, settings.caddyApiUrl);
@@ -1949,6 +1979,17 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
   if (updatingSecuritySettings && !hasPermission(req.user?.role, 'admin')) {
     return res.status(403).json({ error: 'Admin permission required for security settings.' });
   }
+  const updatingAiSettings =
+    aiEnabled !== undefined ||
+    aiProvider !== undefined ||
+    aiBaseUrl !== undefined ||
+    aiModel !== undefined ||
+    aiAllowPrivateBaseUrl !== undefined ||
+    aiApiKey !== undefined ||
+    aiApiKeyClear !== undefined;
+  if (updatingAiSettings && !hasPermission(req.user?.role, 'admin')) {
+    return res.status(403).json({ error: 'Admin permission required for AI settings.' });
+  }
 
   const nextLogPaths = [];
   for (const candidate of Array.isArray(logPaths) ? logPaths.filter(Boolean) : settings.logPaths) {
@@ -1962,11 +2003,30 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
   else if (providedSecret) nextCaddyApiToken = providedSecret;
   else if (providedToken) nextCaddyApiToken = providedToken;
 
+  let nextAiApiKeyEncrypted = settings.aiApiKeyEncrypted || null;
+  if (updatingAiSettings) {
+    if (aiApiKeyClear === true) nextAiApiKeyEncrypted = null;
+    else if (typeof aiApiKey === 'string' && aiApiKey.trim()) nextAiApiKeyEncrypted = encryptAiApiKey(aiApiKey, JWT_SECRET);
+  }
+  const nextAiProvider = aiProvider === undefined ? settings.aiProvider : aiProvider === 'anthropic' ? 'anthropic' : 'openai';
+  const nextAiBaseUrl = aiBaseUrl === undefined ? settings.aiBaseUrl : String(aiBaseUrl || '').trim();
+  const nextAiAllowPrivate = aiAllowPrivateBaseUrl === undefined ? settings.aiAllowPrivateBaseUrl : aiAllowPrivateBaseUrl === true;
+  const nextAiModel = aiModel === undefined ? settings.aiModel : String(aiModel || '').trim();
+  if (updatingAiSettings && nextAiBaseUrl && (aiEnabled === true || nextAiBaseUrl)) {
+    await validateAiBaseUrl(nextAiBaseUrl, { allowPrivate: nextAiAllowPrivate });
+  }
+
   const next = {
     ...settings,
     configMode: requestedMode,
     caddyApiUrl: requestedCaddyApiUrl,
     caddyApiToken: nextCaddyApiToken,
+    aiEnabled: aiEnabled === undefined ? Boolean(settings.aiEnabled) : aiEnabled === true,
+    aiProvider: nextAiProvider,
+    aiBaseUrl: nextAiBaseUrl,
+    aiModel: nextAiModel,
+    aiAllowPrivateBaseUrl: nextAiAllowPrivate,
+    aiApiKeyEncrypted: nextAiApiKeyEncrypted,
     logPaths: nextLogPaths,
     trustProxyHops:
       trustProxyHops === undefined ? settings.trustProxyHops : normalizeTrustProxyHops(trustProxyHops, settings.trustProxyHops),
@@ -2009,6 +2069,45 @@ app.post('/api/settings/test-api', requireTrustedOrigin, auth, requirePermission
     return res.status(result.ok ? 200 : 400).json(result);
   } catch (error) {
     return res.status(503).json({ ok: false, message: error.message || 'Caddy API is unavailable.' });
+  }
+});
+
+app.post('/api/ai/settings/test', requireTrustedOrigin, auth, requirePermission('admin'), requireRateLimit('test-ai', 10, 5 * 60 * 1000), async (req, res) => {
+  try {
+    const settings = await loadSettings();
+    const provider = req.body?.provider === 'anthropic' ? 'anthropic' : settings.aiProvider === 'anthropic' ? 'anthropic' : 'openai';
+    const baseUrl = String(req.body?.baseUrl || settings.aiBaseUrl || '').trim();
+    const model = String(req.body?.model || settings.aiModel || '').trim();
+    const allowPrivate = req.body?.allowPrivateBaseUrl === true || Boolean(settings.aiAllowPrivateBaseUrl);
+    await validateAiBaseUrl(baseUrl, { allowPrivate });
+    const apiKey =
+      String(req.body?.apiKey || '').trim() || decryptAiApiKey(settings.aiApiKeyEncrypted, JWT_SECRET);
+    if (!apiKey || !model) {
+      return res.status(400).json({ error: 'AI API key and model are required.' });
+    }
+    if (!baseUrl) {
+      return res.status(400).json({ error: 'AI base URL is required.' });
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const result = await callAiProvider({
+        provider,
+        baseUrl,
+        apiKey,
+        model,
+        system: 'Reply with OK.',
+        messages: [{ role: 'user', content: 'Connection test. Reply with OK.' }],
+        tools: [],
+        signal: controller.signal,
+      });
+      return res.json({ ok: true, message: result.text || 'AI provider connection succeeded.' });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (error) {
+    const message = error?.name === 'AbortError' ? 'AI provider request timed out.' : error?.message || 'AI provider test failed.';
+    return res.status(400).json({ error: message });
   }
 });
 

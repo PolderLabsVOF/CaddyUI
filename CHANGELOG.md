@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.13-beta - 2026-09-01
+
+### Fixed
+- AI assistant settings: "Test AI provider" and saving AI credentials in Settings no longer return 404. Restored the `/api/ai/settings/test` endpoint and AI field handling in `normalizeSettings`, `publicSettings`, `statusSettings`, and `POST /api/settings` that were dropped between `c74a521` and `43c4b4a`.
+- AI providers that respond with `text/event-stream` (Server-Sent Events) instead of JSON are now parsed correctly. PolderLabs, Cloudflare AI Gateway, and other streaming OpenAI-compatible gateways return the OpenAI Chat Completions schema split across SSE chunks; the assistant call path now aggregates `delta.content` chunks into the same response shape as a non-streaming reply.
+
 ## 0.2.7-beta - 2026-08-26
 
 ### Changed
