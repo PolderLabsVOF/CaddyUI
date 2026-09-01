@@ -8,6 +8,7 @@ import Middlewares from './pages/Middlewares.jsx';
 import Configuration from './pages/Configuration.jsx';
 import Logs from './pages/Logs.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
+import AiAssistant from './components/AiAssistant.jsx';
 import { AuthGate, Notice, ReloadConfirmModal, Shell } from './components/common.jsx';
 
 const APP_VERSION = pkg.version;
@@ -416,6 +417,19 @@ export default function App() {
         busy={caddyBusy}
         onCancel={() => setReloadConfirmOpen(false)}
         onConfirm={reloadCaddyGlobal}
+      />
+      <AiAssistant
+        api={api}
+        settings={settings}
+        canAdmin={canAdmin}
+        notify={pushNotification}
+        onActionComplete={async (result) => {
+          if (result?.parsed) {
+            setConfig((current) => (current ? { ...current, parsed: result.parsed } : current));
+            await refreshConfig();
+          }
+        }}
+        onOpenSettings={() => setPage('settings')}
       />
     </Shell>
   );

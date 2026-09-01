@@ -23,6 +23,7 @@ import {
 import { createStateStore } from './stateStore.js';
 import { decryptAiApiKey, encryptAiApiKey } from './aiCrypto.js';
 import { callAiProvider, validateAiBaseUrl } from './aiProviders.js';
+import { runAiAssistant } from './aiAssistant.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -421,6 +422,138 @@ function requirePermission(required) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     return next();
+  };
+}
+
+function summarizeText(value = '', max = 180) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+}
+
+function eventActor(req, fallbackUsername = '', fallbackRole = '') {
+  return {
+    username: String(req?.user?.username || fallbackUsername || 'system').trim() || 'system',
+    role: String(req?.user?.role || fallbackRole || '').trim() || 'system',
+  };
+}
+
+async function recordEvent(req, {
+  actorUsername = '',
+  actorRole = '',
+  kind = 'app',
+  action = 'action',
+  targetType = '',
+  targetId = '',
+  status = 'success',
+  message = '',
+  details = {},
+} = {}) {
+  const actor = eventActor(req, actorUsername, actorRole);
+  const event = {
+    id: randomUUID(),
+    createdAt: Date.now(),
+    actorUsername: actor.username,
+    actorRole: actor.role,
+    kind: String(kind || 'app').trim(),
+    action: String(action || 'action').trim(),
+    targetType: String(targetType || '').trim(),
+    targetId: String(targetId || '').trim(),
+    status: String(status || 'success').trim(),
+    message: summarizeText(message || `${action} ${targetType}`),
+    details: details && typeof details === 'object' ? details : {},
+  };
+  const store = await stateStore;
+  await store.appendEvent(event);
+  void store.pruneEvents(2000).catch(() => {});
+  return event;
+}
+
+function normalizeDomainScope(value = '') {
+  return String(value || '').trim().toLowerCase().replace(/^\*?\.?/, '');
+}
+
+function normalizeCategoryScope(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeDomainScopes(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.map((value) => normalizeDomainScope(value)).filter(Boolean))];
+}
+
+function normalizeCategoryScopes(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.map((value) => normalizeCategoryScope(value)).filter(Boolean))];
+}
+
+function userHasScopedEditRestrictions(user) {
+  if (!user || user.role !== 'edit') return false;
+  const domains = normalizeDomainScopes(user.allowedDomains || []);
+  const categories = normalizeCategoryScopes(user.allowedCategories || []);
+  return domains.length > 0 || categories.length > 0;
+}
+
+function domainScopeMatches(host = '', scope = '') {
+  const normalizedHost = normalizeDomainScope(host);
+  const normalizedScope = normalizeDomainScope(scope);
+  if (!normalizedHost || !normalizedScope) return false;
+  if (normalizedScope.startsWith('*.')) {
+    const base = normalizedScope.slice(2);
+    return normalizedHost.endsWith(`.${base}`);
+  }
+  return normalizedHost === normalizedScope;
+}
+
+function canUserEditProxyTarget(user, { host = '', category = '' } = {}) {
+  if (!user || user.role === 'admin' || !hasPermission(user.role, 'edit')) return true;
+  if (!userHasScopedEditRestrictions(user)) return true;
+  const allowedDomains = normalizeDomainScopes(user.allowedDomains || []);
+  const allowedCategories = normalizeCategoryScopes(user.allowedCategories || []);
+  const normalizedHost = normalizeDomainScope(host);
+  const normalizedCategory = normalizeCategoryScope(category);
+  const domainAllowed = !allowedDomains.length || (normalizedHost && allowedDomains.some((scope) => domainScopeMatches(normalizedHost, scope)));
+  const categoryAllowed = !allowedCategories.length || (normalizedCategory && allowedCategories.includes(normalizedCategory));
+  return domainAllowed && categoryAllowed;
+}
+
+function visibleAiProxySummaries(parsed, user) {
+  return (parsed?.sites || [])
+    .filter((site) => {
+      if (!userHasScopedEditRestrictions(user)) return true;
+      return canUserEditProxyTarget(user, { host: site.addresses?.[0] || '', category: site.category || '' });
+    })
+    .map((site) => ({
+      line: Number(site.line),
+      host: String(site.addresses?.[0] || ''),
+      upstream: String(site.proxies?.[0]?.upstreams?.[0] || site.proxies?.[0]?.upstream || ''),
+      imports: Array.isArray(site.imports) ? site.imports : [],
+      category: site.category || '',
+      tags: Array.isArray(site.tags) ? site.tags : [],
+      description: site.description || '',
+      disabled: Boolean(site.disabled),
+    }))
+    .slice(0, 300);
+}
+
+async function aiContextForUser(user) {
+  const { settings, content } = await readWorkingConfig();
+  const parsed = await parseConfigWithMeta(content);
+  const proxies = visibleAiProxySummaries(parsed, user);
+  return {
+    configContent: content,
+    proxies,
+    status: { configMode: settings.configMode, proxyCount: proxies.length, caddyApiUrlConfigured: Boolean(settings.caddyApiUrl) },
+  };
+}
+
+function aiProviderConfig(settings) {
+  return {
+    provider: settings.aiProvider,
+    baseUrl: settings.aiBaseUrl,
+    model: settings.aiModel,
+    enabled: settings.aiEnabled,
+    configured: Boolean(settings.aiEnabled && settings.aiBaseUrl && settings.aiModel && settings.aiApiKeyEncrypted),
   };
 }
 
@@ -2110,6 +2243,204 @@ app.post('/api/ai/settings/test', requireTrustedOrigin, auth, requirePermission(
     return res.status(400).json({ error: message });
   }
 });
+
+app.get('/api/ai/status', auth, requirePermission('view'), async (req, res) => {
+  const settings = await loadSettings();
+  res.json({
+    ...aiProviderConfig(settings),
+    canEdit: hasPermission(req.user?.role, 'edit'),
+    canAdmin: hasPermission(req.user?.role, 'admin'),
+  });
+});
+
+app.get('/api/ai/conversations', auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  await store.pruneAiData();
+  res.json({ conversations: await store.listAiConversations(req.user.username) });
+});
+
+app.post('/api/ai/conversations', requireTrustedOrigin, auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  const conversation = await store.createAiConversation({
+    id: randomUUID(),
+    username: req.user.username,
+    title: summarizeText(req.body?.title || 'New conversation', 80),
+    createdAt: Date.now(),
+  });
+  res.status(201).json({ conversation });
+});
+
+app.get('/api/ai/conversations/:id/messages', auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  const conversation = await store.getAiConversation(req.params.id, req.user.username);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found.' });
+  res.json({ conversation, messages: await store.listAiMessages(req.params.id, req.user.username) });
+});
+
+app.delete('/api/ai/conversations/:id', requireTrustedOrigin, auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  const deleted = await store.deleteAiConversation(req.params.id, req.user.username);
+  res.status(deleted ? 200 : 404).json(deleted ? { ok: true } : { error: 'Conversation not found.' });
+});
+
+app.post(
+  '/api/ai/conversations/:id/messages',
+  requireTrustedOrigin,
+  auth,
+  requirePermission('view'),
+  requireRateLimit('ai-message', 20, 10 * 60 * 1000),
+  async (req, res) => {
+    try {
+      const text = String(req.body?.message || '').trim();
+      if (!text || text.length > 8000) {
+        return res.status(400).json({ error: 'Message must be between 1 and 8000 characters.' });
+      }
+      const settings = await loadSettings();
+      const providerConfig = aiProviderConfig(settings);
+      if (!providerConfig.configured) return res.status(503).json({ error: 'AI assistant is not configured.' });
+      await validateAiBaseUrl(providerConfig.baseUrl, { allowPrivate: settings.aiAllowPrivateBaseUrl });
+      const apiKey = decryptAiApiKey(settings.aiApiKeyEncrypted, JWT_SECRET);
+      if (!apiKey) return res.status(503).json({ error: 'AI API key could not be decrypted. Save it again in Settings.' });
+      const store = await stateStore;
+      const conversation = await store.getAiConversation(req.params.id, req.user.username);
+      if (!conversation) return res.status(404).json({ error: 'Conversation not found.' });
+      await store.appendAiMessage({
+        id: randomUUID(),
+        conversationId: conversation.id,
+        username: req.user.username,
+        role: 'user',
+        content: text,
+        createdAt: Date.now(),
+      });
+      const messages = await store.listAiMessages(conversation.id, req.user.username);
+      const context = await aiContextForUser(req.user);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 45_000);
+      let result;
+      try {
+        result = await runAiAssistant({
+          providerConfig,
+          user: req.user,
+          conversationId: conversation.id,
+          messages,
+          context,
+          store,
+          apiKey,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      const assistantMessage = await store.appendAiMessage({
+        id: randomUUID(),
+        conversationId: conversation.id,
+        username: req.user.username,
+        role: 'assistant',
+        content: { text: result.text, proposals: result.proposals },
+        createdAt: Date.now(),
+      });
+      res.json({ message: assistantMessage, proposals: result.proposals });
+    } catch (error) {
+      const status = error?.name === 'AbortError' ? 408 : 400;
+      res.status(status).json({ error: error?.name === 'AbortError' ? 'AI provider request timed out.' : error?.message });
+    }
+  }
+);
+
+app.post('/api/ai/actions/:id/reject', requireTrustedOrigin, auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  const rejected = await store.rejectAiPendingAction(req.params.id, req.user.username);
+  res.status(rejected ? 200 : 404).json(rejected ? { ok: true } : { error: 'Pending action not found.' });
+});
+
+app.post(
+  '/api/ai/actions/:id/confirm',
+  requireTrustedOrigin,
+  auth,
+  requirePermission('edit'),
+  requireRateLimit('ai-confirm', 20, 10 * 60 * 1000),
+  async (req, res) => {
+    const store = await stateStore;
+    const action = await store.consumeAiPendingAction(req.params.id, req.user.username);
+    if (!action) return res.status(409).json({ error: 'Action expired, was already used, or was not found.' });
+    try {
+      const { settings, content } = await readWorkingConfig();
+      const currentFingerprint = createHash('sha256').update(String(content)).digest('hex');
+      if (action.preview?.configFingerprint && action.preview.configFingerprint !== currentFingerprint) {
+        throw new Error('Configuration changed since this action was proposed. Ask the assistant to prepare it again.');
+      }
+      let next = content;
+      if (action.actionType === 'create_proxy') {
+        if (!canUserEditProxyTarget(req.user, { host: action.args.host, category: action.args.category })) {
+          throw new Error('Proxy is outside your allowed scope.');
+        }
+        next = appendSimpleProxy(content, action.args);
+      } else if (action.actionType === 'update_proxy') {
+        const parsed = parseCaddyfile(content);
+        const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
+        if (!previous) throw new Error('Proxy not found.');
+        if (!canUserEditProxyTarget(req.user, { host: action.args.host, category: action.args.category })) {
+          throw new Error('Proxy is outside your allowed scope.');
+        }
+        next = updateSimpleProxy(content, { ...action.args, siteLine: action.args.line });
+      } else if (action.actionType === 'set_proxy_disabled') {
+        const parsed = parseCaddyfile(content);
+        const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
+        if (!previous) throw new Error('Proxy not found.');
+        if (!canUserEditProxyTarget(req.user, { host: previous.addresses?.[0] || '', category: previous.category || '' })) {
+          throw new Error('Proxy is outside your allowed scope.');
+        }
+        next = setProxyDisabled(content, { siteLine: action.args.line, disabled: action.args.disabled === true });
+      } else if (action.actionType === 'delete_proxy') {
+        const parsed = parseCaddyfile(content);
+        const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
+        if (!previous) throw new Error('Proxy not found.');
+        if (!canUserEditProxyTarget(req.user, { host: previous.addresses?.[0] || '', category: previous.category || '' })) {
+          throw new Error('Proxy is outside your allowed scope.');
+        }
+        next = deleteBlockAtLine(content, action.args.line);
+      } else if (action.actionType === 'reload_caddy') {
+        await store.finishAiPendingAction(action.id, req.user.username, 'succeeded');
+        return res.json({
+          ok: true,
+          action,
+          requiresHeaderReload: true,
+          message: 'Use the Reload Caddy confirmation in the header.',
+        });
+      } else {
+        throw new Error('Unsupported AI action.');
+      }
+      const validation = await validateConfigForSettings(settings, next);
+      if (!validation.ok && !validation.unavailable) {
+        throw new Error('Generated Caddy configuration did not validate.');
+      }
+      await applyConfigContent(settings, next);
+      if (['create_proxy', 'update_proxy'].includes(action.actionType)) {
+        await saveProxyMetaByParts(
+          action.args.host,
+          action.args.upstream,
+          action.args.tags,
+          action.args.category,
+          action.args.description
+        );
+      }
+      const parsed = await parseConfigWithMeta(next);
+      await store.finishAiPendingAction(action.id, req.user.username, 'succeeded');
+      const event = await recordEvent(req, {
+        kind: 'ai',
+        action: action.actionType,
+        targetType: 'proxy',
+        targetId: action.args.host || String(action.args.line || ''),
+        message: `AI-confirmed action ${action.actionType} succeeded.`,
+        details: { conversationId: action.conversationId, actionId: action.id },
+      });
+      res.json({ ok: true, action, parsed, event, reloadSuggested: true });
+    } catch (error) {
+      await store.finishAiPendingAction(action.id, req.user.username, 'failed');
+      if (!res.headersSent) res.status(400).json({ error: error.message });
+    }
+  }
+);
 
 app.post('/api/settings/reset-caddy-config', requireTrustedOrigin, auth, requirePermission('admin'), requireRateLimit('reset-caddy-config', 4, 15 * 60 * 1000), async (req, res) => {
   const settings = await loadSettings();
