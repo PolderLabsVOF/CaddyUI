@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.15-beta - 2026-09-01
+### Added
+- AI assistant messages now render Markdown (bold, italic, inline code, fenced code blocks, ordered/unordered lists, GFM-style pipe tables, and links) via an in-house renderer in `src/components/markdown.jsx`. HTML is escaped before token substitution.
+- AI assistant chat animations: scale-and-rise panel entry, hover lift + scale + glow pulse on the Sparkles trigger button, staggered fade + slide-up for messages (user messages slide in from the right, assistant from below), bouncing three-dot Thinking indicator (replaces the spinning Loader), fade + slide-up + lift for action cards, focus glow on the composer textarea, and hover/press feedback on the send button. All animations respect `prefers-reduced-motion`.
+
 ## 0.2.14-beta - 2026-09-01
 ### Fixed
 - AI assistant popup/button is restored in the UI. The floating Sparkles trigger button and conversation panel are mounted in `App.jsx`, with required props (`api`, `settings`, `canAdmin`, `notify`, `onActionComplete`, `onOpenSettings`).
