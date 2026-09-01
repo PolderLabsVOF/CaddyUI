@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Bot, Check, ChevronDown, Loader2, MessageSquarePlus, Send, Sparkles, Trash2, X } from 'lucide-react';
 import { Notice } from './common.jsx';
+import { renderAssistantMarkdown } from './markdown.jsx';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
 
@@ -164,7 +165,11 @@ export default function AiAssistant({ api, settings, canAdmin, onActionComplete,
                 {!messages.length && <div className="ai-welcome"><Sparkles size={24} /><h3>What should I manage?</h3><p>Try: “Create a proxy for app.example.com to 127.0.0.1:3000.”</p></div>}
                 {messages.map((message) => (
                   <div key={message.id} className={`ai-message ${message.role}`}>
-                    <div className="ai-message-content">{messageText(message)}</div>
+                    <div className={`ai-message-content ${message.role === 'assistant' ? 'ai-message-rich' : ''}`}>
+                      {message.role === 'assistant'
+                        ? renderAssistantMarkdown(messageText(message))
+                        : messageText(message)}
+                    </div>
                     {messageProposals(message).map((proposal) => (
                       <div className={`ai-action-card ${proposal.actionType === 'delete_proxy' || proposal.actionType === 'reload_caddy' ? 'danger' : ''}`} key={proposal.id}>
                         <b>{actionLabel(proposal.actionType)}</b>
@@ -175,7 +180,12 @@ export default function AiAssistant({ api, settings, canAdmin, onActionComplete,
                     ))}
                   </div>
                 ))}
-                {busy && <div className="ai-message assistant ai-thinking"><Loader2 size={16} className="spin" /> Thinking…</div>}
+                {busy && (
+                  <div className="ai-message assistant ai-thinking" aria-label="Assistant is thinking">
+                    <span className="ai-thinking-dots" aria-hidden="true"><span /><span /><span /></span>
+                    <span className="ai-thinking-label">Thinking…</span>
+                  </div>
+                )}
               </div>
               <form className="ai-composer" onSubmit={send}>
                 <textarea value={draft} onChange={(event) => setDraft(event.target.value.slice(0, 8000))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) send(event); }} placeholder="Ask about or manage proxies…" rows={3} disabled={busy} />
