@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.18-beta - 2026-09-01
+### Fixed
+- AI assistant responses containing HTML entities (`&#39;`, `&#x27;`, `&quot;`, `&amp;`, `&lt;`, `&gt;`, `&mdash;`, etc.) now display as their literal characters. Some AI providers and models return assistant text with HTML-escaped apostrophes, quotes, and ampersands; the chat previously rendered these as visible `&#39;` instead of `'`. The server now decodes named and numeric HTML entities (named ones first, so `&amp;#39;` → `'`, not `&#39;`) before storing assistant messages. Decoding is safe because the Markdown renderer already escapes raw HTML before token substitution.
+
 ## 0.2.17-beta - 2026-09-01
 ### Fixed
 - In-app update flow no longer reports "done" before the new version is actually serving requests. The old process's git state (`localCommit === remoteCommit` after `install.sh` runs `git reset --hard`) used to fire the completion check while the old process was still serving — only the new process actually restarts after that step. The frontend now also gates on a process-identity check (`processStartedVersion === installedVersion` from `/api/app/check-updates`), and only dismisses the overlay once the running process is the new build. The status response now exposes both fields so the UI can compare them.
