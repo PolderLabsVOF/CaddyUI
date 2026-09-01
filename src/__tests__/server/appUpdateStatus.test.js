@@ -146,4 +146,34 @@ describe('appUpdateStatus — tag-only bump detection', () => {
     expect(result.updateAvailable).toBe(true);
     expect(result.availableVersion).toBe('0.2.11-beta');
   });
+
+  test('exposes processStartedVersion_and_installedVersion_for_restart_gate', async () => {
+    // The frontend uses these two fields to detect when the running process
+    // has actually been replaced. After install.sh runs `git reset --hard`
+    // but before the OLD process is killed, the OLD process's frozen
+    // `processStartedVersion` will still report the OLD version while
+    // `installedVersion` (re-read from disk each request) reports the NEW
+    // version — a mismatch the frontend uses to hold the overlay.
+    queueGitResponses({
+      localCommit: 'aaaaaaa1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      remoteCommit: 'aaaaaaa1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      localVersion: '0.2.10-beta',
+      remoteVersion: '0.2.10-beta',
+      tagOutput: 'v0.2.10-beta\n',
+    });
+
+    // Act
+    const result = await appUpdateStatus(false, 'beta');
+
+    // Assert — both fields are populated. `installedVersion` reflects
+    // package.json on disk (re-read each request), and `processStartedVersion`
+    // reflects the build-time frozen constant loaded with the running
+    // process. In the test environment both resolve to APP_VERSION since
+    // there's no real on-disk version mismatch; the key contract is that
+    // both fields are non-empty strings the frontend can compare.
+    expect(typeof result.processStartedVersion).toBe('string');
+    expect(typeof result.installedVersion).toBe('string');
+    expect(result.processStartedVersion.length).toBeGreaterThan(0);
+    expect(result.installedVersion.length).toBeGreaterThan(0);
+  });
 });

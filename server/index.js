@@ -31,6 +31,16 @@ app.disable('x-powered-by');
 const PORT = Number(process.env.CADDY_UI_PORT || process.env.PORT || 8787);
 const ROOT = process.cwd();
 const APP_VERSION = JSON.parse(fssync.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+
+function readInstalledPackageVersion() {
+  try {
+    const text = fssync.readFileSync(path.join(ROOT, 'package.json'), 'utf8');
+    const parsed = JSON.parse(text);
+    return String(parsed.version || APP_VERSION);
+  } catch {
+    return APP_VERSION;
+  }
+}
 function defaultDataDir() {
   try {
     if (process.getuid && process.getuid() === 0) return '/var/lib/caddyui';
@@ -1459,6 +1469,8 @@ async function appUpdateStatus(fetchMode = false, channelOverride = '') {
   );
   return {
     version: APP_VERSION,
+    processStartedVersion: APP_VERSION,
+    installedVersion: readInstalledPackageVersion(),
     localVersion: committedLocalVersion,
     remoteVersion,
     availableVersion: tagAhead

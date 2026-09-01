@@ -287,13 +287,26 @@ export default function App() {
             Boolean(status.localCommit) &&
             Boolean(status.remoteCommit) &&
             status.localCommit === status.remoteCommit;
-          if (upToDate && branchAligned && (commitChanged || versionChanged || !baseline?.updateAvailable)) {
+          // Gate on process identity: the running process must be the new build.
+          // During install.sh, `git reset --hard` updates on-disk package.json to the
+          // new version while the OLD process is still serving requests — at that
+          // point upToDate/commitChanged fire too early. Only the new process reports
+          // installedVersion === processStartedVersion, so this check holds the
+          // overlay until the restart actually completes.
+          const processIdentityMatches = Boolean(
+            status.processStartedVersion &&
+            status.installedVersion &&
+            status.processStartedVersion === status.installedVersion,
+          );
+          if (upToDate && branchAligned && processIdentityMatches && (commitChanged || versionChanged || !baseline?.updateAvailable)) {
             confirmedReadyCount += 1;
           } else {
             confirmedReadyCount = 0;
           }
           if (status.updateAvailable) {
             setUpdateMessage(`Installing update ${status.availableVersion || status.remoteVersion || ''}...`);
+          } else if (!processIdentityMatches) {
+            setUpdateMessage('Restarting service to load the new version...');
           } else {
             setUpdateMessage('Waiting for updated app to come online...');
           }
