@@ -30,6 +30,45 @@ When you call propose_create_proxy or propose_update_proxy, the tool input schem
 
 When you mention middleware in your reply text, name it the same way the user's snippets name it. If a tool call's imports differs from what you describe in text, prefer what the tool call says — the tool call is what actually gets applied.`;
 
+// Some AI gateways (and certain models) return assistant text with HTML
+// entities like `&#39;` instead of literal apostrophes. The Markdown
+// renderer escapes HTML on its own, so any pre-escaped characters show up
+// as visible `&#39;` in the chat. Decode the common named and numeric
+// entities before storing the message so the assistant reads naturally.
+const NAMED_ENTITIES = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&apos;': "'",
+  '&#39;': "'",
+  '&nbsp;': ' ',
+  '&mdash;': '—',
+  '&ndash;': '–',
+  '&hellip;': '…',
+  '&laquo;': '«',
+  '&raquo;': '»',
+};
+const NAMED_ENTITY_PATTERN = new RegExp(Object.keys(NAMED_ENTITIES).join('|'), 'g');
+const NUMERIC_ENTITY_PATTERN = /&#(x[0-9a-f]+|\d+);/gi;
+
+function decodeAssistantText(value) {
+  if (!value) return value;
+  return String(value)
+    .replace(NAMED_ENTITY_PATTERN, (match) => NAMED_ENTITIES[match] || match)
+    .replace(NUMERIC_ENTITY_PATTERN, (match, raw) => {
+      const codePoint = raw.startsWith('x') || raw.startsWith('X')
+        ? parseInt(raw.slice(1), 16)
+        : parseInt(raw, 10);
+      if (!Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10ffff) return match;
+      try {
+        return String.fromCodePoint(codePoint);
+      } catch {
+        return match;
+      }
+    });
+}
+
 function providerMessages(provider, messages) {
   if (provider === 'anthropic') return messages.map((message) => ({ role: message.role === 'assistant' ? 'assistant' : 'user', content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content) }));
   return messages.map((message) => ({ role: message.role === 'assistant' ? 'assistant' : 'user', content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content) }));
@@ -129,7 +168,7 @@ export async function runAiAssistant({ providerConfig, user, conversationId, mes
       tools: TOOL_DEFINITIONS,
       signal,
     });
-    if (result.text) finalText += result.text;
+    if (result.text) finalText += decodeAssistantText(result.text);
     if (!result.toolCalls.length) break;
     for (const call of result.toolCalls.slice(0, 6)) {
       let output;
