@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.17-beta - 2026-09-01
+### Fixed
+- In-app update flow no longer reports "done" before the new version is actually serving requests. The old process's git state (`localCommit === remoteCommit` after `install.sh` runs `git reset --hard`) used to fire the completion check while the old process was still serving — only the new process actually restarts after that step. The frontend now also gates on a process-identity check (`processStartedVersion === installedVersion` from `/api/app/check-updates`), and only dismisses the overlay once the running process is the new build. The status response now exposes both fields so the UI can compare them.
+
 ## 0.2.16-beta - 2026-09-01
 ### Added
 - AI assistant now mirrors the user's Caddyfile format conventions when proposing create or edit actions. The assistant context includes a `formatGuide` (indent unit + width, quote style, line endings, host naming convention), `sampleBlocks` (canonical example site blocks from the current config), `snippets` (declaed middleware snippets with bodies), and `snippetUsage` (declared / referenced / orphan). The system prompt instructs the model to match the user's indentation, quoting, and line endings, and to reuse existing snippet names rather than invent new ones.
