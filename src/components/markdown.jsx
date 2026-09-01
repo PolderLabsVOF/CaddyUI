@@ -45,9 +45,12 @@ function renderTableRow(cells, isHeader = false) {
 
 function renderInline(text) {
   if (text == null) return null;
-  const safe = escapeHtml(text);
+  // React already escapes text content inside JSX elements, so we don't
+  // HTML-escape here. Pre-escaping `'` to `&#39;` was visible as the literal
+  // entity in the rendered chat because React would escape the `&` again.
+  // Attribute values still go through escapeAttr (link URLs).
   const tokens = [];
-  let working = safe;
+  let working = String(text);
 
   // Inline code: `code` — render first so its content isn't re-interpreted.
   working = working.replace(/`([^`\n]+)`/g, (_match, code) => {
