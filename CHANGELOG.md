@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.14-beta - 2026-09-01
+### Fixed
+- AI assistant popup/button is restored in the UI. The floating Sparkles trigger button and conversation panel are mounted in `App.jsx`, with required props (`api`, `settings`, `canAdmin`, `notify`, `onActionComplete`, `onOpenSettings`).
+- AI backend endpoints that were dropped between `c74a521` and `43c4b4a` are restored: `GET /api/ai/status`, `GET /api/ai/conversations`, `POST /api/ai/conversations`, `GET /api/ai/conversations/:id/messages`, `DELETE /api/ai/conversations/:id`, `POST /api/ai/conversations/:id/messages`, `POST /api/ai/actions/:id/{reject,confirm}`. Helpers `summarizeText`, `eventActor`, `recordEvent`, `canUserEditProxyTarget` (plus `normalizeDomainScope`/`normalizeCategoryScope`/`domainScopeMatches`/`userHasScopedEditRestrictions`), `visibleAiProxySummaries`, `aiContextForUser`, and `aiProviderConfig` are added back to `server/index.js`.
+- AI message handler now passes the conversation's existing message history, user role, and proxy context to `runAiAssistant`, so the assistant can list proxies and stage proposals (create/update/disable/delete/reload) for explicit user confirmation.
+
 ## 0.2.13-beta - 2026-09-01
 
 ### Fixed
