@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.19-beta - 2026-09-01
+### Fixed
+- AI assistant chat still rendered `&#39;` for apostrophes after v0.2.18-beta's server-side decoder. Root cause: the Markdown renderer's `renderInline` was pre-escaping `'` to `&#39;`, then React 19 auto-escaped the `&` to `&amp;`, so the browser displayed `&#39;` literally. Removed the pre-escape from `renderInline` — React already escapes text content safely, including `'` (as `&#x27;`) and `"` (as `&quot;`), which the browser then decodes back to the literal character. The server-side decoder is still needed for any literal `&#39;` entities that the AI model emits directly.
+
+### Changed
+- Proxies table selection checkboxes now render the indeterminate state with a horizontal bar (matches Chrome/Firefox native UX), respond to hover with an accent-tinted border, and disable cleanly when not editable. The checkbox column grew from 28px to 36px so the box isn't visually crowded against the row content.
+
 ## 0.2.18-beta - 2026-09-01
 ### Fixed
 - AI assistant responses containing HTML entities (`&#39;`, `&#x27;`, `&quot;`, `&amp;`, `&lt;`, `&gt;`, `&mdash;`, etc.) now display as their literal characters. Some AI providers and models return assistant text with HTML-escaped apostrophes, quotes, and ampersands; the chat previously rendered these as visible `&#39;` instead of `'`. The server now decodes named and numeric HTML entities (named ones first, so `&amp;#39;` → `'`, not `&#39;`) before storing assistant messages. Decoding is safe because the Markdown renderer already escapes raw HTML before token substitution.
