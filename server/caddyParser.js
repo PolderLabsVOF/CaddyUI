@@ -517,20 +517,40 @@ function replaceFirstTopLevelReverseProxy(lines, upstream, proxyImports = []) {
   return next;
 }
 
+function detectBlockIndent(source = '') {
+  const text = String(source || '');
+  const tabLines = text.match(/^\t+/gm) || [];
+  const spaceLines = text.match(/^ +/gm) || [];
+  if (tabLines.length && (!spaceLines.length || tabLines.length >= spaceLines.length)) {
+    return '\t';
+  }
+  if (spaceLines.length) {
+    const widths = spaceLines.map((m) => m.length).sort((a, b) => a - b);
+    const smallest = widths[0];
+    for (const candidate of [8, 4, 2]) {
+      if (smallest % candidate === 0) return ' '.repeat(candidate);
+    }
+    return ' '.repeat(smallest);
+  }
+  return '\t';
+}
+
 export function appendSimpleProxy(source, { host, upstream, imports = [], logging = {}, description = '', disabled = false }) {
   const safeHost = String(host || '').trim();
   const safeUpstream = String(upstream || '').trim();
   const safeDescription = String(description || '').trim();
   if (!safeHost || !safeUpstream) throw new Error('Host and upstream are required.');
+  const indent = detectBlockIndent(source);
+  const innerIndent = indent + indent;
   const { siteImports, proxyImports } = splitImportsByScope(source, imports);
-  const importLines = siteImports.map((name) => `\timport ${name}`).join('\n');
-  const descriptionLine = safeDescription ? `\t# caddyui-description: ${safeDescription}` : '';
-  const disabledLine = disabled ? '\t# caddyui-disabled: true' : '';
-  const logLines = formatLogLines('\t', logging).join('\n');
-  const proxyImportLines = proxyImports.map((name) => `\t\timport ${name}`).join('\n');
+  const importLines = siteImports.map((name) => `${indent}import ${name}`).join('\n');
+  const descriptionLine = safeDescription ? `${indent}# caddyui-description: ${safeDescription}` : '';
+  const disabledLine = disabled ? `${indent}# caddyui-disabled: true` : '';
+  const logLines = formatLogLines(indent, logging).join('\n');
+  const proxyImportLines = proxyImports.map((name) => `${innerIndent}import ${name}`).join('\n');
   const proxyBlock = proxyImportLines
-    ? `\treverse_proxy ${safeUpstream} {\n${proxyImportLines}\n\t}`
-    : `\treverse_proxy ${safeUpstream}`;
+    ? `${indent}reverse_proxy ${safeUpstream} {\n${proxyImportLines}\n${indent}}`
+    : `${indent}reverse_proxy ${safeUpstream}`;
   const proxyLine = disabled ? proxyBlock.split('\n').map(maskDisabledProxyLine).join('\n') : proxyBlock;
   const block = `${safeHost} {\n${descriptionLine ? `${descriptionLine}\n` : ''}${disabledLine ? `${disabledLine}\n` : ''}${importLines ? `${importLines}\n` : ''}${logLines ? `${logLines}\n` : ''}${proxyLine}\n}\n`;
   return `${source.trimEnd()}\n\n${block}`;

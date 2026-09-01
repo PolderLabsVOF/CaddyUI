@@ -536,14 +536,132 @@ function visibleAiProxySummaries(parsed, user) {
     .slice(0, 300);
 }
 
+function detectIndentUnit(source = '') {
+  const text = String(source || '');
+  const tabLines = text.match(/^\t+/gm) || [];
+  const spaceLines = text.match(/^ +/gm) || [];
+  if (tabLines.length && (!spaceLines.length || tabLines.length >= spaceLines.length)) {
+    return { indent: 'tab', width: 1 };
+  }
+  if (spaceLines.length) {
+    // Use the smallest non-zero indent as the base unit so we don't report
+    // nested-block indentation (e.g. inside a reverse_proxy).
+    const widths = spaceLines.map((m) => m.length).sort((a, b) => a - b);
+    const smallest = widths[0];
+    // Pick the largest candidate that divides the smallest indent so we report
+    // an indent unit the user actually uses at the top level.
+    for (const candidate of [8, 4, 2]) {
+      if (smallest % candidate === 0) {
+        return { indent: 'spaces', width: candidate };
+      }
+    }
+    return { indent: 'spaces', width: smallest };
+  }
+  return { indent: 'tab', width: 1 };
+}
+
+function detectQuoteStyle(source = '') {
+  const text = String(source || '');
+  const doubleQuotes = (text.match(/"/g) || []).length;
+  const singleQuotes = (text.match(/'/g) || []).length;
+  if (doubleQuotes > singleQuotes) return 'double';
+  if (singleQuotes > doubleQuotes) return 'single';
+  return 'double';
+}
+
+function detectNamingConvention(samples = []) {
+  const hosts = samples.filter(Boolean).map((host) => String(host).trim());
+  if (!hosts.length) return 'unknown';
+  const subdomains = hosts.filter((h) => h.includes('.'));
+  const hasHyphens = subdomains.some((h) => /-/.test(h.split('.')[0]));
+  const hasUnderscores = hosts.some((h) => /_/.test(h));
+  const allLower = hosts.every((h) => h === h.toLowerCase());
+  const allDigits = hosts.every((h) => /^[a-z0-9.-]+$/.test(h));
+  return {
+    hyphenated: hasHyphens,
+    underscored: hasUnderscores,
+    allLowercase: allLower,
+    onlySafeChars: allDigits,
+    exampleHosts: hosts.slice(0, 5),
+  };
+}
+
+function detectLineEndings(source = '') {
+  return /\r\n/.test(String(source || '')) ? 'crlf' : 'lf';
+}
+
+function extractSampleBlocks(parsed, content, max = 4, maxBlockChars = 600) {
+  const lines = String(content || '').split(/\r?\n/);
+  const samples = [];
+  for (const site of parsed?.sites || []) {
+    if (samples.length >= max) break;
+    const start = Number(site.line) - 1;
+    const end = Math.min(lines.length, Number(site.endLine || site.line));
+    if (start < 0 || end <= start) continue;
+    const block = lines.slice(start, end).join('\n');
+    samples.push({
+      host: site.addresses?.[0] || '',
+      line: site.line,
+      block: block.length > maxBlockChars ? `${block.slice(0, maxBlockChars)}…` : block,
+    });
+  }
+  return samples;
+}
+
+function summarizeSnippets(parsed) {
+  return (parsed?.snippets || []).map((snippet) => ({
+    name: snippet.name,
+    line: snippet.line,
+    usedBy: Array.isArray(snippet.usedBy) ? snippet.usedBy : [],
+    inferredType: snippet.inferredType || 'snippet',
+    body: snippet.body || '',
+  }));
+}
+
+function detectSnippetUsage(parsed) {
+  const names = (parsed?.snippets || []).map((s) => s.name);
+  const imported = new Set();
+  for (const site of parsed?.sites || []) {
+    for (const imp of site.imports || []) imported.add(imp.name || imp);
+  }
+  const declared = new Set(names);
+  return {
+    declared: [...declared],
+    referenced: [...imported].filter((name) => declared.has(name)),
+    orphan: [...declared].filter((name) => !imported.has(name)),
+  };
+}
+
 async function aiContextForUser(user) {
   const { settings, content } = await readWorkingConfig();
   const parsed = await parseConfigWithMeta(content);
   const proxies = visibleAiProxySummaries(parsed, user);
+  const indent = detectIndentUnit(content);
+  const quoteStyle = detectQuoteStyle(content);
+  const lineEndings = detectLineEndings(content);
+  const naming = detectNamingConvention(proxies.map((p) => p.host));
+  const sampleBlocks = extractSampleBlocks(parsed, content, 4, 600);
+  const snippets = summarizeSnippets(parsed);
+  const snippetUsage = detectSnippetUsage(parsed);
   return {
     configContent: content,
     proxies,
-    status: { configMode: settings.configMode, proxyCount: proxies.length, caddyApiUrlConfigured: Boolean(settings.caddyApiUrl) },
+    status: {
+      configMode: settings.configMode,
+      proxyCount: proxies.length,
+      snippetCount: snippets.length,
+      caddyApiUrlConfigured: Boolean(settings.caddyApiUrl),
+    },
+    formatGuide: {
+      indent: indent.indent,
+      indentWidth: indent.width,
+      quoteStyle,
+      lineEndings,
+      naming,
+    },
+    sampleBlocks,
+    snippets,
+    snippetUsage,
   };
 }
 
