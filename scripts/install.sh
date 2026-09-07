@@ -4,7 +4,7 @@ umask 077
 
 APP_NAME="CaddyUI"
 SCRIPT_CHANNEL="stable"
-INSTALLER_VERSION="2026.09.07-1"
+INSTALLER_VERSION="2026.09.07-2"
 REPO_URL="https://github.com/PolderLabsVOF/CaddyUI.git"
 GITHUB_REPOSITORY="PolderLabsVOF/CaddyUI"
 GITHUB_RELEASES_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest"
@@ -770,7 +770,9 @@ install_dev_nightly() {
   run_quiet curl --fail --location --retry 3 --output "$archive" "$DEV_NIGHTLY_URL" || { rm -rf "$temp_dir"; fail "Unable to download the dev nightly archive."; }
   digest="$(sha256sum "$archive" | awk '{print $1}')"
   [[ "$digest" == "$DEV_NIGHTLY_SHA256" ]] || { rm -rf "$temp_dir"; fail "Dev nightly archive digest verification failed."; }
-  tar -tzf "$archive" | grep -qx 'caddyui-nightly/package.json' || { rm -rf "$temp_dir"; fail "Dev nightly archive has an unexpected layout."; }
+  # Do not use grep -q here: with pipefail it closes the pipe after the first
+  # match, causing tar to exit with SIGPIPE (141) for otherwise valid archives.
+  tar -tzf "$archive" | grep -Fx 'caddyui-nightly/package.json' >/dev/null || { rm -rf "$temp_dir"; fail "Dev nightly archive has an unexpected layout."; }
   archive_commit="$(tar -xOf "$archive" caddyui-nightly/.caddyui-nightly-commit 2>/dev/null || true)"
   [[ "$archive_commit" == "$DEV_NIGHTLY_COMMIT" ]] || { rm -rf "$temp_dir"; fail "Dev nightly archive does not match its advertised commit."; }
 
