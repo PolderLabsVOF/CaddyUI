@@ -1107,21 +1107,43 @@ async function collectLogs(settings, lines = 200) {
 }
 
 function parseCaddyAccessLog(line) {
+  const text = String(line || '').trim();
+  const jsonStart = text.indexOf('{');
   try {
-    const record = JSON.parse(line);
+    const record = JSON.parse(jsonStart >= 0 ? text.slice(jsonStart) : text);
     const request = record.request || {};
     const status = Number(record.status);
     const timestamp = typeof record.ts === 'number' ? record.ts * 1000 : Date.parse(record.ts || record.time);
-    if (!request.host || !Number.isFinite(status) || !Number.isFinite(timestamp)) return null;
+    const rawHeaderHost = request.headers?.Host ?? request.headers?.host;
+    const headerHost = Array.isArray(rawHeaderHost) ? rawHeaderHost[0] : rawHeaderHost;
+    const host = request.host || headerHost || record.host;
+    if (!host || !Number.isFinite(status) || !Number.isFinite(timestamp)) return null;
     return {
       timestamp,
-      host: String(request.host),
+      host: String(host),
       status,
       bytes: Math.max(0, Number(record.size || record.bytes_written || 0) || 0),
       duration: Math.max(0, Number(record.duration || record.duration_ns / 1e9 || 0) || 0),
       visitor: String(request.remote_ip || request.client_ip || ''),
     };
-  } catch { return null; }
+  } catch {
+    const common = text.match(/^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(?:\S+)\s+([^\s"]+)[^"]*"\s+(\d{3})\s+(\d+|-)/);
+    if (!common) return null;
+    const [, visitor, timestampText, requestTarget, statusText, sizeText] = common;
+    const timestamp = Date.parse(timestampText.replace(/:(?=\d{2}:\d{2}:\d{2}\s)/, ' '));
+    const host = requestTarget.startsWith('http') ? (() => {
+      try { return new URL(requestTarget).host; } catch { return 'unknown host'; }
+    })() : 'unknown host';
+    if (!Number.isFinite(timestamp)) return null;
+    return {
+      timestamp,
+      host,
+      status: Number(statusText),
+      bytes: sizeText === '-' ? 0 : Number(sizeText),
+      duration: 0,
+      visitor,
+    };
+  }
 }
 
 async function trafficAnalytics(settings, range) {
@@ -1132,7 +1154,7 @@ async function trafficAnalytics(settings, range) {
   const buckets = Array.from({ length: range === '7d' ? 7 : 24 }, (_, index) => ({ start: new Date(now - (range === '7d' ? 6 - index : 23 - index) * interval).setMinutes(0, 0, 0), requests: 0 }));
   const hosts = new Map(); const statusCodes = new Map(); const visitors = new Set();
   let requests = 0; let errors = 0; let bytes = 0; let totalDuration = 0; let unparsedLines = 0;
-  const logs = await collectLogs({ ...settings, logMode: 'files' }, 2000);
+  const logs = await collectLogs(settings, 2000);
   for (const entry of logs) {
     for (const line of String(entry.content || '').split('\n')) {
       if (!line.trim()) continue;
@@ -2732,7 +2754,7 @@ loadSettings().catch(() => {});
 
 const isRunningUnderVitest = process.env.VITEST === 'true' || Boolean(import.meta.vitest);
 
-export { caddyPathPart, checkProxyHealth, parsePrometheusMetrics, probeTarget, tcpCheck };
+export { caddyPathPart, checkProxyHealth, parseCaddyAccessLog, parsePrometheusMetrics, probeTarget, tcpCheck };
 
 if (!isRunningUnderVitest) {
   app.listen(PORT, () => {

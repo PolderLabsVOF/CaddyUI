@@ -198,6 +198,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
   const [scopeFilter, setScopeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('usage');
   const [creatorOpen, setCreatorOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState('blank');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -252,6 +253,14 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       name: form.name.trim() ? form.name : template.name,
       body: normalizeEditorBody(template.body),
     });
+    setSelectedTemplate(template.key);
+  };
+
+  const clearDraft = () => {
+    clearMessages();
+    setForm({ name: '', body: '' });
+    setSelectedTemplate('blank');
+    window.requestAnimationFrame(() => creatorNameRef.current?.focus());
   };
 
   const openCreator = () => {
@@ -287,6 +296,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       if (localTest) {
         applyLocal(`${config.content.trimEnd()}\n\n${localSnippetBlock(form.name, normalizedBody)}\n`);
         setForm({ name: '', body: '' });
+        setSelectedTemplate('blank');
         setSuccess('Middleware added locally.');
         return;
       }
@@ -297,6 +307,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       setConfig((current) => ({ ...current, content: data.content, parsed: data.parsed }));
       onConfigChanged?.('Middleware added.');
       setForm({ name: '', body: '' });
+      setSelectedTemplate('blank');
       setSuccess('Middleware added.');
     } catch (err) {
       setError(err.message);
@@ -377,6 +388,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       name: nextDuplicateName(snippet.name, snippets),
       body: normalizeEditorBody(snippet.body),
     });
+    setSelectedTemplate('blank');
     setEdit(null);
     setCreatorOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -387,6 +399,16 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
     try {
       await navigator.clipboard.writeText(`import ${snippet.name}`);
       setSuccess(`Copied import ${snippet.name}.`);
+    } catch {
+      setError('Clipboard copy failed.');
+      setMessage('');
+    }
+  };
+
+  const copyDraftBlock = async () => {
+    try {
+      await navigator.clipboard.writeText(snippetPreview(form.name, form.body));
+      setSuccess('Copied the generated middleware block.');
     } catch {
       setError('Clipboard copy failed.');
       setMessage('');
@@ -423,19 +445,58 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       {canEdit && creatorOpen && (
         <div className="middleware-workbench">
           <form className="middleware-builder" onSubmit={add}>
-            <div className="middleware-builder-main">
-              <div className="middleware-card-head">
+            <aside className="middleware-starter-rail" aria-label="Middleware starting points">
+              <div className="middleware-creator-section-head">
                 <div>
-                  <h3>Create middleware</h3>
-                  <p>Start from a template, tweak the body, and add it directly to the Caddyfile snippet library.</p>
+                  <span className="middleware-step">1. Start</span>
+                  <h3>Choose a starting point</h3>
+                  <p>Use a proven pattern or start with an empty snippet.</p>
                 </div>
-                <button type="submit" className="primary" disabled={busy}>
+              </div>
+              <div className="middleware-starter-list">
+                <button
+                  type="button"
+                  className={`middleware-template middleware-template-blank ${selectedTemplate === 'blank' ? 'selected' : ''}`}
+                  aria-pressed={selectedTemplate === 'blank'}
+                  onClick={clearDraft}
+                >
                   <Plus size={16} />
-                  Add middleware
+                  <span>Blank middleware</span>
+                  <small>write from scratch</small>
                 </button>
+                {middlewareTemplates.map((template) => (
+                  <button
+                    key={template.key}
+                    type="button"
+                    className={`middleware-template ${selectedTemplate === template.key ? 'selected' : ''}`}
+                    aria-pressed={selectedTemplate === template.key}
+                    onClick={() => applyTemplateToForm(template)}
+                  >
+                    <LayoutTemplate size={16} />
+                    <span>{template.label}</span>
+                    <small>{template.scope} middleware</small>
+                  </button>
+                ))}
+              </div>
+            </aside>
+
+            <div className="middleware-builder-main middleware-composer">
+              <div className="middleware-creator-section-head">
+                <div>
+                  <span className="middleware-step">2. Compose</span>
+                  <h3>New middleware</h3>
+                  <p>Name the reusable block, then add the Caddy directives it should contain.</p>
+                </div>
+                <div className="middleware-composer-actions">
+                  <button type="button" onClick={() => setForm((current) => ({ ...current, body: normalizeEditorBody(current.body) }))}>
+                    <Sparkles size={16} />
+                    Normalize
+                  </button>
+                  <button type="button" onClick={() => setCreatorOpen(false)}>Close</button>
+                </div>
               </div>
               <label>
-                Name
+                Middleware name
                 <input
                   ref={creatorNameRef}
                   placeholder="security_headers"
@@ -443,17 +504,22 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </label>
-              <div className="middleware-editor-toolbar toolbar">
-                <button type="button" onClick={() => setForm((current) => ({ ...current, body: normalizeEditorBody(current.body) }))}>
-                  <Sparkles size={16} />
-                  Normalize indentation
-                </button>
-                <button type="button" onClick={() => setForm({ name: '', body: '' })}>Clear draft</button>
-                <button type="button" onClick={() => setCreatorOpen(false)}>Close creator</button>
+              <div className="middleware-directive-bar">
+                <div>
+                  <span className="middleware-step">Directives</span>
+                  <p>Append a common block, then fine-tune it in the editor below.</p>
+                </div>
+                <div className="middleware-helper-list" aria-label="Directive helpers">
+                  {middlewareHelpers.map((helper) => (
+                    <button key={helper.key} type="button" onClick={() => appendHelperToForm(helper)}>
+                      <Plus size={14} />{helper.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="middleware-editor middleware-editor-large">
                 <Editor
-                  height="320px"
+                  height="390px"
                   defaultLanguage="caddyfile"
                   theme={theme === 'light' ? 'light' : 'vs-dark'}
                   value={form.body}
@@ -463,51 +529,27 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
               </div>
             </div>
 
-            <div className="middleware-builder-side">
-              <div className="middleware-side-card">
-                <div className="middleware-card-head compact">
-                  <div>
-                    <h4>Starter templates</h4>
-                    <p>Quick-fill common middleware patterns.</p>
-                  </div>
+            <aside className="middleware-builder-side middleware-preview-card">
+              <div className="middleware-creator-section-head">
+                <div>
+                  <span className="middleware-step">3. Review</span>
+                  <h3>Generated Caddyfile</h3>
+                  <p>This exact reusable block will be added to the snippet library.</p>
                 </div>
-                <div className="middleware-template-grid">
-                  {middlewareTemplates.map((template) => (
-                    <button key={template.key} type="button" className="middleware-template" onClick={() => applyTemplateToForm(template)}>
-                      <LayoutTemplate size={16} />
-                      <span>{template.label}</span>
-                      <small>{template.scope}</small>
-                    </button>
-                  ))}
-                </div>
+                <button type="button" className="icon-button" onClick={copyDraftBlock} aria-label="Copy generated middleware block" title="Copy generated block">
+                  <Copy size={16} />
+                </button>
               </div>
-
-              <div className="middleware-side-card">
-                <div className="middleware-card-head compact">
-                  <div>
-                    <h4>Directive helpers</h4>
-                    <p>Append small blocks instead of rewriting boilerplate by hand.</p>
-                  </div>
-                </div>
-                <div className="middleware-helper-list">
-                  {middlewareHelpers.map((helper) => (
-                    <button key={helper.key} type="button" onClick={() => appendHelperToForm(helper)}>
-                      {helper.label}
-                    </button>
-                  ))}
-                </div>
+              <pre>{snippetPreview(form.name, form.body)}</pre>
+              <div className="middleware-save-panel">
+                <p>{form.name.trim() && form.body.trim() ? 'Ready to add this middleware.' : 'Add a name and at least one directive to continue.'}</p>
+                <button type="submit" className="primary" disabled={busy || !form.name.trim() || !form.body.trim()}>
+                  <Plus size={16} />
+                  {busy ? 'Adding middleware…' : 'Add middleware'}
+                </button>
+                <button type="button" className="middleware-clear-draft" onClick={clearDraft}>Clear draft</button>
               </div>
-
-              <div className="middleware-side-card middleware-preview-card">
-                <div className="middleware-card-head compact">
-                  <div>
-                    <h4>Preview</h4>
-                    <p>This is the block that will be written.</p>
-                  </div>
-                </div>
-                <pre>{snippetPreview(form.name, form.body)}</pre>
-              </div>
-            </div>
+            </aside>
           </form>
         </div>
       )}

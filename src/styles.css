@@ -929,14 +929,14 @@ label {
 .middleware-create-cta button { flex: none; }
 
 .middleware-builder {
-  padding: 14px;
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(190px, 0.36fr) minmax(460px, 1fr) minmax(290px, 0.5fr);
   gap: 14px;
 }
 
 .middleware-builder-main,
-.middleware-side-card,
+.middleware-starter-rail,
+.middleware-preview-card,
 .middleware-empty {
   min-width: 0;
   padding: 16px;
@@ -951,31 +951,36 @@ label {
 }
 
 .middleware-builder-side {
-  display: grid;
-  gap: 14px;
-  align-content: start;
+  align-self: start;
 }
 
-.middleware-card-head {
+.middleware-creator-section-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
-.middleware-card-head.compact {
-  display: block;
-}
-
-.middleware-card-head h3,
-.middleware-card-head h4,
+.middleware-creator-section-head h3,
 .middleware-empty h3 {
-  margin: 0;
+  margin: 3px 0 0;
 }
 
-.middleware-card-head p,
+.middleware-creator-section-head p,
 .middleware-empty p {
-  margin: 4px 0 0;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.middleware-step {
+  display: block;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .middleware-editor-large {
@@ -984,29 +989,36 @@ label {
   border-radius: var(--radius-lg);
 }
 
-.middleware-editor-toolbar {
-  align-items: center;
-}
-
-.middleware-template-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.middleware-composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
-.middleware-template-grid.compact {
-  grid-template-columns: 1fr;
+.middleware-starter-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .middleware-template {
+  width: 100%;
   min-height: 0;
   padding: 10px;
   display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
   justify-items: start;
-  gap: 4px;
+  column-gap: 8px;
+  row-gap: 2px;
   text-align: left;
-  border-color: color-mix(in srgb, var(--accent-line) 55%, var(--line));
-  background: color-mix(in srgb, var(--surface) 75%, var(--accent-soft) 25%);
+  border-color: color-mix(in srgb, var(--accent-line) 42%, var(--line));
+  background: color-mix(in srgb, var(--surface) 78%, var(--accent-soft) 22%);
+}
+
+.middleware-template svg {
+  grid-row: 1 / span 2;
 }
 
 .middleware-template span,
@@ -1021,9 +1033,36 @@ label {
   letter-spacing: 0.04em;
 }
 
+.middleware-template.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.middleware-template-blank {
+  border-style: dashed;
+}
+
+.middleware-directive-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.middleware-directive-bar p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .middleware-helper-list {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -1032,10 +1071,16 @@ label {
   padding: 8px 10px;
 }
 
+.middleware-helper-list button svg {
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
 .middleware-preview-card pre {
-  margin: 0;
+  margin: 14px 0 0;
   padding: 12px;
-  max-height: 320px;
+  min-height: 280px;
+  max-height: 420px;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1043,6 +1088,28 @@ label {
   font-family: 'Cascadia Code', Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.middleware-save-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.middleware-save-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.middleware-save-panel .primary {
+  width: 100%;
+}
+
+.middleware-clear-draft {
+  width: 100%;
+  color: var(--muted);
 }
 
 .middleware-searchbar {
@@ -2009,18 +2076,17 @@ label {
     grid-template-columns: 1fr;
   }
 
-  .middleware-template-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .middleware-card-head {
+  .middleware-directive-bar {
+    align-items: flex-start;
     flex-direction: column;
-    align-items: stretch;
   }
 
-  .middleware-card-head > button,
-  .middleware-card-head .primary {
-    width: 100%;
+  .middleware-helper-list {
+    justify-content: flex-start;
+  }
+
+  .middleware-composer-actions {
+    justify-content: flex-start;
   }
 }
 

@@ -3,7 +3,7 @@ vi.mock('sqlite', () => ({ open: () => Promise.resolve({ exec: async () => {}, r
 
 import net from 'node:net';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { caddyPathPart, checkProxyHealth, parsePrometheusMetrics, probeTarget } from '../../../server/index.js';
+import { caddyPathPart, checkProxyHealth, parseCaddyAccessLog, parsePrometheusMetrics, probeTarget } from '../../../server/index.js';
 
 let server;
 let port;
@@ -59,5 +59,31 @@ describe('Caddy Admin API helpers', () => {
       expect.objectContaining({ name: 'caddy_http_requests_in_flight', value: 3, labels: { server: 'srv0' } }),
     ]));
     expect(parsed.summary).toMatchObject({ goroutines: 42, requestsInFlight: 3, processStartTime: 1000 });
+  });
+});
+
+describe('traffic analytics log parsing', () => {
+  test('accepts Caddy JSON access logs, including journal-prefixed entries', () => {
+    const entry = '2026-09-07T13:20:00+00:00 host caddy[21]: {"ts":1788787200,"request":{"host":"example.test","remote_ip":"203.0.113.9"},"status":201,"size":512,"duration":0.032}';
+
+    expect(parseCaddyAccessLog(entry)).toMatchObject({
+      host: 'example.test',
+      visitor: '203.0.113.9',
+      status: 201,
+      bytes: 512,
+      duration: 0.032,
+    });
+  });
+
+  test('accepts common access-log lines when JSON logging is not enabled', () => {
+    const entry = '203.0.113.9 - - [07/Sep/2026:13:20:00 +0000] "GET http://example.test/health HTTP/1.1" 200 42';
+
+    expect(parseCaddyAccessLog(entry)).toMatchObject({
+      host: 'example.test',
+      visitor: '203.0.113.9',
+      status: 200,
+      bytes: 42,
+      duration: 0,
+    });
   });
 });

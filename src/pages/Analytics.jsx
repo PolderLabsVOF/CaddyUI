@@ -58,7 +58,7 @@ export default function Analytics({ api }) {
   const errorRate = data?.requests ? ((data.errors / data.requests) * 100).toFixed(1) : '0.0';
   return <section className="analytics-page">
     <div className="section-head analytics-head">
-      <div><h2>Traffic analytics</h2><p>Request activity from your structured Caddy access logs.</p></div>
+      <div><h2>Traffic analytics</h2><p>Request activity from configured Caddy logs and the system journal.</p></div>
       <div className="analytics-actions" role="group" aria-label="Analytics time range">
         {ranges.map(([value, label]) => <button key={value} type="button" className={range === value ? 'active' : ''} onClick={() => setRange(value)} aria-pressed={range === value}>{label}</button>)}
         <button type="button" className="icon-button" onClick={load} disabled={busy} aria-label="Refresh analytics" title="Refresh analytics"><RefreshCw size={17} className={busy ? 'spin' : ''} /></button>
@@ -66,7 +66,7 @@ export default function Analytics({ api }) {
     </div>
     {error && <div className="notice error"><TriangleAlert size={18} /><span>{error}</span></div>}
     <div className="analytics-kpis" aria-busy={busy}>
-      <article><span className="analytics-icon"><Activity size={18} /></span><div><span>Total requests</span><strong>{formatNumber.format(data?.requests || 0)}</strong><small>{data?.requests ? `${data.uniqueVisitors} unique visitors` : 'Awaiting access log data'}</small></div></article>
+      <article><span className="analytics-icon"><Activity size={18} /></span><div><span>Total requests</span><strong>{formatNumber.format(data?.requests || 0)}</strong><small>{data?.requests ? `${data.uniqueVisitors} unique visitors` : 'No request records in this period'}</small></div></article>
       <article><span className="analytics-icon"><TriangleAlert size={18} /></span><div><span>Error rate</span><strong>{errorRate}%</strong><small>{formatNumber.format(data?.errors || 0)} responses with 4xx or 5xx</small></div></article>
       <article><span className="analytics-icon"><Clock3 size={18} /></span><div><span>Avg. response time</span><strong>{formatDuration(data?.averageDuration || 0)}</strong><small>Recorded request duration</small></div></article>
       <article><span className="analytics-icon"><ArrowDownToLine size={18} /></span><div><span>Data transferred</span><strong>{formatBytes(data?.bytes || 0)}</strong><small>Response body size</small></div></article>
@@ -80,14 +80,14 @@ export default function Analytics({ api }) {
         <div className="analytics-panel-head"><div><h3>Response codes</h3><p>Distribution of recorded responses</p></div></div>
         <div className="status-breakdown">
           {(data?.statusCodes || []).map((item) => <div key={item.code}><div><span className={`status-code status-${Math.floor(item.code / 100)}xx`}>{item.code}</span><span>{formatNumber.format(item.count)} requests</span></div><div className="status-bar"><span style={{ width: `${totalResponses ? (item.count / totalResponses) * 100 : 0}%` }} /></div></div>)}
-          {!data?.statusCodes?.length && <p className="analytics-empty">Response-code data will appear when Caddy writes JSON access logs.</p>}
+          {!data?.statusCodes?.length && <p className="analytics-empty">No response-code records were found in the selected period.</p>}
         </div>
       </article>
       <article className="analytics-panel hosts-panel">
         <div className="analytics-panel-head"><div><h3>Top hosts</h3><p>Most requested domains and routes</p></div><Server size={18} /></div>
         <ol className="host-list">
           {(data?.hosts || []).map((host, index) => <li key={host.name}><span className="host-rank">{index + 1}</span><div><strong>{host.name}</strong><small>{formatNumber.format(host.requests)} requests · {formatBytes(host.bytes)}</small></div><span className="host-share">{data?.requests ? Math.round((host.requests / data.requests) * 100) : 0}%</span></li>)}
-          {!data?.hosts?.length && <li className="analytics-empty">No host data available yet.</li>}
+          {!data?.hosts?.length && <li className="analytics-empty">No host records were found in the selected period.</li>}
         </ol>
       </article>
     </div>
