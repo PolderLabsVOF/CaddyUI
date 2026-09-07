@@ -27,5 +27,6 @@ describe('logs and API-only navigation', () => {
 
   test('does not expose the legacy Caddyfile configuration editor in navigation', () => {
     expect(pageItems.map(([id]) => id)).not.toContain('configuration');
+    expect(pageItems.map(([id]) => id)).toContain('caddy');
   });
 });
