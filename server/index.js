@@ -38,6 +38,7 @@ function defaultDataDir() {
 }
 const DATA_DIR = process.env.CADDY_UI_DATA_DIR || defaultDataDir();
 const DB_PATH = process.env.CADDY_UI_DB_PATH || path.join(DATA_DIR, 'caddyui.db');
+const UPDATE_STATUS_PATH = path.join(DATA_DIR, 'update-status.tsv');
 const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
 const SESSION_PATH = path.join(DATA_DIR, 'sessions.json');
 const DEFAULT_SECRET = 'dev-change-me-caddy-ui';
@@ -102,6 +103,10 @@ const UPDATE_BRANCH = {
   beta: 'beta',
   dev: 'dev',
 };
+const GITHUB_REPOSITORY = 'PolderLabsVOF/CaddyUI';
+const DEV_NIGHTLY_TAG = 'nightly';
+const DEV_NIGHTLY_ASSET_PREFIX = 'caddyui-nightly-';
+const DEV_NIGHTLY_RELEASE_URL = `https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${DEV_NIGHTLY_TAG}`;
 const JWT_ALGORITHM = 'HS256';
 const COOKIE_MODE_VALUES = new Set(['auto', 'secure', 'insecure']);
 let runtimeAllowedOrigins = new Set(ENV_ALLOWED_ORIGINS);
@@ -1221,6 +1226,81 @@ async function appBranch() {
   return result.ok ? result.stdout.trim() : 'unknown';
 }
 
+async function readUpdateProgress() {
+  try {
+    const [phase = '', percent = '', message = '', updatedAt = ''] = (await fs.readFile(UPDATE_STATUS_PATH, 'utf8')).trim().split('\t');
+    const numericPercent = Number(percent);
+    if (!phase || !Number.isFinite(numericPercent)) return null;
+    return {
+      phase,
+      percent: Math.max(0, Math.min(100, Math.round(numericPercent))),
+      message,
+      updatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writeUpdateProgress(phase, percent, message) {
+  await fs.mkdir(path.dirname(UPDATE_STATUS_PATH), { recursive: true });
+  await fs.writeFile(UPDATE_STATUS_PATH, `${phase}\t${percent}\t${message}\t${new Date().toISOString()}\n`, { mode: 0o600 });
+}
+
+async function latestSuccessfulDevNightly() {
+  let response;
+  try {
+    response = await fetch(DEV_NIGHTLY_RELEASE_URL, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'CaddyUI-updater',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (error) {
+    throw new Error(`Unable to reach the dev nightly release: ${error.message}`);
+  }
+  if (!response.ok) throw new Error(`The dev nightly release is unavailable (GitHub returned ${response.status}).`);
+
+  const release = await response.json();
+  const commit = String(release.target_commitish || '').trim();
+  const assetName = `${DEV_NIGHTLY_ASSET_PREFIX}${commit}.tar.gz`;
+  const checksumName = `${assetName}.sha256`;
+  const expectedAssetUrl = `https://github.com/${GITHUB_REPOSITORY}/releases/download/${DEV_NIGHTLY_TAG}/${assetName}`;
+  const expectedChecksumUrl = `https://github.com/${GITHUB_REPOSITORY}/releases/download/${DEV_NIGHTLY_TAG}/${checksumName}`;
+  const asset = Array.isArray(release.assets)
+    ? release.assets.find((item) => item?.name === assetName)
+    : null;
+  const checksumAsset = Array.isArray(release.assets)
+    ? release.assets.find((item) => item?.name === checksumName)
+    : null;
+  const assetUrl = String(asset?.browser_download_url || '').trim();
+  const checksumUrl = String(checksumAsset?.browser_download_url || '').trim();
+  if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('The dev nightly release does not identify an immutable commit.');
+  if (assetUrl !== expectedAssetUrl) throw new Error('The dev nightly release is missing its commit-addressed update archive.');
+  if (checksumUrl !== expectedChecksumUrl) throw new Error('The dev nightly release is missing its checksum asset.');
+  let checksumResponse;
+  try {
+    checksumResponse = await fetch(checksumUrl, {
+      headers: { 'User-Agent': 'CaddyUI-updater' },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (error) {
+    throw new Error(`Unable to download the dev nightly checksum: ${error.message}`);
+  }
+  if (!checksumResponse.ok) throw new Error(`Unable to download the dev nightly checksum (GitHub returned ${checksumResponse.status}).`);
+  const digest = (await checksumResponse.text()).match(/\b([a-f0-9]{64})\b/i)?.[1]?.toLowerCase() || '';
+  if (!/^[0-9a-f]{64}$/.test(digest)) throw new Error('The dev nightly checksum asset is invalid.');
+
+  return {
+    commit,
+    version: `nightly-${commit.slice(0, 7)}`,
+    assetUrl,
+    assetSha256: digest,
+    publishedAt: release.published_at || release.created_at || '',
+  };
+}
+
 async function appUpdateStatus(fetchRemote = false, channelOverride = '') {
   const currentBranch = await appBranch();
   const settings = await loadSettings();
@@ -1228,11 +1308,46 @@ async function appUpdateStatus(fetchRemote = false, channelOverride = '') {
     ? updateTargetForChannel(channelOverride, currentBranch)
     : updateTargetFromSettings(settings, currentBranch);
   const head = await run('git', ['rev-parse', 'HEAD'], { cwd: ROOT });
+  const localCommit = head.ok ? head.stdout.trim() : '';
+  if (channel === 'dev') {
+    try {
+      const nightly = await latestSuccessfulDevNightly();
+      const updateAvailable = Boolean(localCommit && localCommit !== nightly.commit);
+      return {
+        version: APP_VERSION,
+        localVersion: APP_VERSION,
+        remoteVersion: nightly.version,
+        availableVersion: updateAvailable ? nightly.version : APP_VERSION,
+        branch: targetBranch,
+        updateChannel: channel,
+        updateSource: 'nightly',
+        currentBranch,
+        localCommit,
+        remoteCommit: nightly.commit,
+        nightly: { commit: nightly.commit, publishedAt: nightly.publishedAt },
+        updateAvailable,
+      };
+    } catch (error) {
+      return {
+        version: APP_VERSION,
+        localVersion: APP_VERSION,
+        remoteVersion: APP_VERSION,
+        availableVersion: APP_VERSION,
+        branch: targetBranch,
+        updateChannel: channel,
+        updateSource: 'nightly',
+        currentBranch,
+        localCommit,
+        remoteCommit: '',
+        updateAvailable: false,
+        updateError: error.message,
+      };
+    }
+  }
   if (fetchRemote && targetBranch !== 'unknown') {
     await run('git', ['fetch', '--quiet', 'origin', targetBranch], { cwd: ROOT });
   }
   const remoteHead = targetBranch === 'unknown' ? { ok: false, stdout: '' } : await run('git', ['rev-parse', `origin/${targetBranch}`], { cwd: ROOT });
-  const localCommit = head.ok ? head.stdout.trim() : '';
   const remoteCommit = remoteHead.ok ? remoteHead.stdout.trim() : '';
   let remoteVersion = APP_VERSION;
   if (targetBranch !== 'unknown') {
@@ -2178,21 +2293,44 @@ app.post('/api/app/update', requireTrustedOrigin, auth, requirePermission('admin
   const currentBranch = await appBranch();
   const settings = await loadSettings();
   const override = String(req.body?.updateChannel || '').trim().toLowerCase();
-  const { branch } = UPDATE_CHANNELS.has(override)
+  const { channel, branch } = UPDATE_CHANNELS.has(override)
     ? updateTargetForChannel(override, currentBranch)
     : updateTargetFromSettings(settings, currentBranch);
   const scriptPath = path.join(ROOT, 'scripts', 'install.sh');
   if (!fssync.existsSync(scriptPath)) {
     return res.status(500).json({ error: 'Installer script not found.' });
   }
+  let nightly = null;
+  if (channel === 'dev') {
+    try {
+      nightly = await latestSuccessfulDevNightly();
+    } catch (error) {
+      return res.status(503).json({ error: error.message });
+    }
+  }
+  await writeUpdateProgress('queued', 12, 'Update request accepted. Starting installer.');
   const child = spawn('bash', [scriptPath], {
     cwd: ROOT,
-    env: { ...process.env, CADDYUI_BRANCH: branch, CADDYUI_ASSUME_YES: '1' },
+    env: {
+      ...process.env,
+      CADDYUI_BRANCH: branch,
+      CADDYUI_ASSUME_YES: '1',
+      CADDYUI_UPDATE_STATUS_FILE: UPDATE_STATUS_PATH,
+      ...(nightly ? {
+        CADDYUI_DEV_NIGHTLY_URL: nightly.assetUrl,
+        CADDYUI_DEV_NIGHTLY_COMMIT: nightly.commit,
+        CADDYUI_DEV_NIGHTLY_SHA256: nightly.assetSha256,
+      } : {}),
+    },
     detached: true,
     stdio: 'ignore',
   });
   child.unref();
   res.json({ ok: true, started: true });
+});
+
+app.get('/api/app/update-status', auth, requirePermission('view'), async (_req, res) => {
+  res.json({ progress: await readUpdateProgress() });
 });
 
 if (process.env.NODE_ENV === 'production') {
