@@ -22,6 +22,9 @@ import {
   setProxyDisabled,
 } from './caddyParser.js';
 import { createStateStore } from './stateStore.js';
+import { decryptAiApiKey, encryptAiApiKey } from './aiCrypto.js';
+import { callAiProvider, validateAiBaseUrl } from './aiProviders.js';
+import { runAiAssistant } from './aiAssistant.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -382,6 +385,12 @@ function normalizeSettings(settings) {
     caddyfilePath: base.caddyfilePath || '',
     caddyApiUrl: normalizeApiUrl(base.caddyApiUrl, DEFAULT_CADDY_API_URL),
     caddyApiToken: String(base.caddyApiToken ?? DEFAULT_CADDY_API_TOKEN).trim(),
+    aiEnabled: Boolean(base.aiEnabled),
+    aiProvider: base.aiProvider === 'anthropic' ? 'anthropic' : 'openai',
+    aiBaseUrl: String(base.aiBaseUrl || '').trim(),
+    aiModel: String(base.aiModel || '').trim(),
+    aiAllowPrivateBaseUrl: Boolean(base.aiAllowPrivateBaseUrl),
+    aiApiKeyEncrypted: base.aiApiKeyEncrypted && typeof base.aiApiKeyEncrypted === 'object' ? base.aiApiKeyEncrypted : null,
     logPaths: Array.isArray(base.logPaths) ? base.logPaths : COMMON_LOGS,
     updateChannel: UPDATE_CHANNELS.has(base.updateChannel) ? base.updateChannel : 'stable',
     trustProxyHops: normalizeTrustProxyHops(base.trustProxyHops, ENV_TRUST_PROXY_HOPS),
@@ -418,6 +427,12 @@ function requirePermission(required) {
     }
     return next();
   };
+}
+
+function summarizeText(value = '', max = 180) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
 function setupTokenRequired(settings) {
@@ -465,6 +480,12 @@ function publicSettings(settings, currentUsername = '') {
     caddyfilePath: normalized.caddyfilePath || '',
     caddyApiUrl: normalized.caddyApiUrl || '',
     hasCaddyApiToken: Boolean(normalized.caddyApiToken),
+    aiEnabled: normalized.aiEnabled,
+    aiProvider: normalized.aiProvider,
+    aiBaseUrl: normalized.aiBaseUrl,
+    aiModel: normalized.aiModel,
+    aiAllowPrivateBaseUrl: normalized.aiAllowPrivateBaseUrl,
+    hasAiApiKey: Boolean(normalized.aiApiKeyEncrypted),
     hasCaddyApiSecret: Boolean(normalized.caddyApiToken),
     logPaths: normalized.logPaths || COMMON_LOGS,
     updateChannel: normalized.updateChannel || 'stable',
@@ -495,6 +516,12 @@ function statusSettings(settings, authenticated, currentUsername = '') {
     caddyfilePath: normalized.caddyfilePath || '',
     caddyApiUrl: normalized.caddyApiUrl || '',
     hasCaddyApiToken: Boolean(normalized.caddyApiToken),
+    aiEnabled: normalized.aiEnabled,
+    aiProvider: normalized.aiProvider,
+    aiBaseUrl: normalized.aiBaseUrl,
+    aiModel: normalized.aiModel,
+    aiAllowPrivateBaseUrl: normalized.aiAllowPrivateBaseUrl,
+    hasAiApiKey: Boolean(normalized.aiApiKeyEncrypted),
     hasCaddyApiSecret: Boolean(normalized.caddyApiToken),
     logPaths: normalized.logPaths || COMMON_LOGS,
     updateChannel: normalized.updateChannel || 'stable',
@@ -2036,6 +2063,175 @@ app.get('/api/logs', auth, requirePermission('view'), async (req, res) => {
   res.json({ logs: await collectLogs({ ...settings, logMode: mode }, bounded) });
 });
 
+app.get('/api/events', auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  const limit = Number(req.query.limit || 200);
+  res.json({ events: await store.listEvents({ limit }) });
+});
+
+function visibleAiProxySummaries(parsed, user) {
+  return (parsed?.sites || []).map((site) => ({
+    line: Number(site.line),
+    host: String(site.addresses?.[0] || ''),
+    upstream: String(site.proxies?.[0]?.upstreams?.[0] || site.proxies?.[0]?.upstream || ''),
+    imports: Array.isArray(site.imports) ? site.imports : [],
+    category: site.category || '',
+    tags: Array.isArray(site.tags) ? site.tags : [],
+    description: site.description || '',
+    disabled: Boolean(site.disabled),
+  })).slice(0, 300);
+}
+
+async function aiContextForUser(user) {
+  const { settings, content } = await readWorkingConfig();
+  const parsed = await parseConfigWithMeta(content);
+  const proxies = visibleAiProxySummaries(parsed, user);
+  return {
+    configContent: content,
+    proxies,
+    status: { configMode: settings.configMode, proxyCount: proxies.length, caddyApiUrlConfigured: Boolean(settings.caddyApiUrl) },
+  };
+}
+
+function aiProviderConfig(settings) {
+  return {
+    provider: settings.aiProvider,
+    baseUrl: settings.aiBaseUrl,
+    model: settings.aiModel,
+    enabled: settings.aiEnabled,
+    configured: Boolean(settings.aiEnabled && settings.aiBaseUrl && settings.aiModel && settings.aiApiKeyEncrypted),
+  };
+}
+
+app.get('/api/ai/status', auth, requirePermission('view'), async (req, res) => {
+  const settings = await loadSettings();
+  res.json({ ...aiProviderConfig(settings), canEdit: hasPermission(req.user?.role, 'edit'), canAdmin: hasPermission(req.user?.role, 'admin') });
+});
+
+app.post('/api/ai/settings/test', requireTrustedOrigin, auth, requirePermission('admin'), requireRateLimit('test-ai', 10, 5 * 60 * 1000), async (req, res) => {
+  try {
+    const settings = await loadSettings();
+    const provider = req.body?.provider === 'anthropic' ? 'anthropic' : settings.aiProvider;
+    const baseUrl = String(req.body?.baseUrl || settings.aiBaseUrl || '').trim();
+    const model = String(req.body?.model || settings.aiModel || '').trim();
+    const allowPrivate = req.body?.allowPrivateBaseUrl === true || settings.aiAllowPrivateBaseUrl;
+    await validateAiBaseUrl(baseUrl, { allowPrivate });
+    const apiKey = String(req.body?.apiKey || '').trim() || decryptAiApiKey(settings.aiApiKeyEncrypted, JWT_SECRET);
+    if (!apiKey || !model) return res.status(400).json({ error: 'AI API key and model are required.' });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const result = await callAiProvider({ provider, baseUrl, apiKey, model, system: 'Reply with OK.', messages: [{ role: 'user', content: 'Connection test. Reply with OK.' }], tools: [], signal: controller.signal });
+      res.json({ ok: true, message: result.text || 'AI provider connection succeeded.' });
+    } finally { clearTimeout(timer); }
+  } catch (error) {
+    res.status(400).json({ error: error.name === 'AbortError' ? 'AI provider request timed out.' : error.message });
+  }
+});
+
+app.get('/api/ai/conversations', auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  await store.pruneAiData();
+  res.json({ conversations: await store.listAiConversations(req.user.username) });
+});
+
+app.post('/api/ai/conversations', requireTrustedOrigin, auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  const conversation = await store.createAiConversation({ id: randomUUID(), username: req.user.username, title: summarizeText(req.body?.title || 'New conversation', 80), createdAt: Date.now() });
+  res.status(201).json({ conversation });
+});
+
+app.get('/api/ai/conversations/:id/messages', auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  const conversation = await store.getAiConversation(req.params.id, req.user.username);
+  if (!conversation) return res.status(404).json({ error: 'Conversation not found.' });
+  res.json({ conversation, messages: await store.listAiMessages(req.params.id, req.user.username) });
+});
+
+app.delete('/api/ai/conversations/:id', requireTrustedOrigin, auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  const deleted = await store.deleteAiConversation(req.params.id, req.user.username);
+  res.status(deleted ? 200 : 404).json(deleted ? { ok: true } : { error: 'Conversation not found.' });
+});
+
+app.post('/api/ai/conversations/:id/messages', requireTrustedOrigin, auth, requirePermission('view'), requireRateLimit('ai-message', 20, 10 * 60 * 1000), async (req, res) => {
+  try {
+    const text = String(req.body?.message || '').trim();
+    if (!text || text.length > 8000) return res.status(400).json({ error: 'Message must be between 1 and 8000 characters.' });
+    const settings = await loadSettings();
+    const providerConfig = aiProviderConfig(settings);
+    if (!providerConfig.configured) return res.status(503).json({ error: 'AI assistant is not configured.' });
+    await validateAiBaseUrl(providerConfig.baseUrl, { allowPrivate: settings.aiAllowPrivateBaseUrl });
+    const apiKey = decryptAiApiKey(settings.aiApiKeyEncrypted, JWT_SECRET);
+    if (!apiKey) return res.status(503).json({ error: 'AI API key could not be decrypted. Save it again in Settings.' });
+    const store = await stateStore;
+    const conversation = await store.getAiConversation(req.params.id, req.user.username);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found.' });
+    await store.appendAiMessage({ id: randomUUID(), conversationId: conversation.id, username: req.user.username, role: 'user', content: text, createdAt: Date.now() });
+    const messages = await store.listAiMessages(conversation.id, req.user.username);
+    const context = await aiContextForUser(req.user);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 45000);
+    let result;
+    try {
+      result = await runAiAssistant({ providerConfig, user: req.user, conversationId: conversation.id, messages, context, store, apiKey, signal: controller.signal });
+    } finally { clearTimeout(timer); }
+    const assistantMessage = await store.appendAiMessage({ id: randomUUID(), conversationId: conversation.id, username: req.user.username, role: 'assistant', content: { text: result.text, proposals: result.proposals }, createdAt: Date.now() });
+    res.json({ message: assistantMessage, proposals: result.proposals });
+  } catch (error) {
+    res.status(400).json({ error: error.name === 'AbortError' ? 'AI provider request timed out.' : error.message });
+  }
+});
+
+app.post('/api/ai/actions/:id/reject', requireTrustedOrigin, auth, requirePermission('view'), async (req, res) => {
+  const store = await stateStore;
+  const rejected = await store.rejectAiPendingAction(req.params.id, req.user.username);
+  res.status(rejected ? 200 : 404).json(rejected ? { ok: true } : { error: 'Pending action not found.' });
+});
+
+app.post('/api/ai/actions/:id/confirm', requireTrustedOrigin, auth, requirePermission('edit'), requireRateLimit('ai-confirm', 20, 10 * 60 * 1000), async (req, res) => {
+  const store = await stateStore;
+  const action = await store.consumeAiPendingAction(req.params.id, req.user.username);
+  if (!action) return res.status(409).json({ error: 'Action expired, was already used, or was not found.' });
+  try {
+    const { settings, content } = await readWorkingConfig();
+    const currentFingerprint = createHash('sha256').update(String(content)).digest('hex');
+    if (action.preview?.configFingerprint && action.preview.configFingerprint !== currentFingerprint) throw new Error('Configuration changed since this action was proposed. Ask the assistant to prepare it again.');
+    let next = content;
+    if (action.actionType === 'create_proxy') {
+      next = appendSimpleProxy(content, action.args);
+    } else if (action.actionType === 'update_proxy') {
+      const parsed = parseCaddyfile(content);
+      const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
+      if (!previous) throw new Error('Proxy not found.');
+      next = updateSimpleProxy(content, { ...action.args, siteLine: action.args.line });
+    } else if (action.actionType === 'set_proxy_disabled') {
+      const parsed = parseCaddyfile(content);
+      const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
+      if (!previous) throw new Error('Proxy not found.');
+      next = setProxyDisabled(content, action.args.line, action.args.disabled === true);
+    } else if (action.actionType === 'delete_proxy') {
+      const parsed = parseCaddyfile(content);
+      const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
+      if (!previous) throw new Error('Proxy not found.');
+      next = deleteBlockAtLine(content, action.args.line);
+    } else if (action.actionType === 'reload_caddy') {
+      await store.finishAiPendingAction(action.id, req.user.username, 'succeeded');
+      return res.json({ ok: true, action, requiresHeaderReload: true, message: 'Use the Reload Caddy confirmation in the header.' });
+    } else throw new Error('Unsupported AI action.');
+    const validation = await validateConfigForSettings(settings, next);
+    if (!validation.ok && !validation.unavailable) throw new Error('Generated Caddy configuration did not validate.');
+    await applyConfigContent(settings, next);
+    if (['create_proxy', 'update_proxy'].includes(action.actionType)) await saveProxyMetaByParts(action.args.host, action.args.upstream, action.args.tags, action.args.category, action.args.description);
+    const parsed = await parseConfigWithMeta(next);
+    await store.finishAiPendingAction(action.id, req.user.username, 'succeeded');
+    res.json({ ok: true, action, parsed, reloadSuggested: true });
+  } catch (error) {
+    await store.finishAiPendingAction(action.id, req.user.username, 'failed');
+    if (!res.headersSent) res.status(400).json({ error: error.message });
+  }
+});
+
 app.get('/api/settings', auth, requirePermission('view'), async (req, res) => {
   const settings = await loadSettings();
   res.json({
@@ -2057,6 +2253,13 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
     allowRemoteSetup,
     secureCookieMode,
     allowedOrigins,
+    aiEnabled,
+    aiProvider,
+    aiBaseUrl,
+    aiModel,
+    aiAllowPrivateBaseUrl,
+    aiApiKey,
+    aiApiKeyClear,
   } = req.body || {};
   const requestedMode = 'api';
   const requestedCaddyApiUrl = caddyApiUrl === undefined ? settings.caddyApiUrl : normalizeApiUrl(caddyApiUrl, settings.caddyApiUrl);
@@ -2084,11 +2287,25 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
   else if (providedSecret) nextCaddyApiToken = providedSecret;
   else if (providedToken) nextCaddyApiToken = providedToken;
 
+  let nextAiApiKeyEncrypted = settings.aiApiKeyEncrypted || null;
+  if (aiApiKeyClear === true) nextAiApiKeyEncrypted = null;
+  else if (typeof aiApiKey === 'string' && aiApiKey.trim()) nextAiApiKeyEncrypted = encryptAiApiKey(aiApiKey, JWT_SECRET);
+  const nextAiProvider = aiProvider === undefined ? settings.aiProvider : aiProvider === 'anthropic' ? 'anthropic' : 'openai';
+  const nextAiBaseUrl = aiBaseUrl === undefined ? settings.aiBaseUrl : String(aiBaseUrl || '').trim();
+  const nextAiAllowPrivate = aiAllowPrivateBaseUrl === undefined ? settings.aiAllowPrivateBaseUrl : aiAllowPrivateBaseUrl === true;
+  if ((aiEnabled === true || nextAiBaseUrl) && nextAiBaseUrl) await validateAiBaseUrl(nextAiBaseUrl, { allowPrivate: nextAiAllowPrivate });
+
   const next = {
     ...settings,
     configMode: requestedMode,
     caddyApiUrl: requestedCaddyApiUrl,
     caddyApiToken: nextCaddyApiToken,
+    aiEnabled: aiEnabled === undefined ? settings.aiEnabled : aiEnabled === true,
+    aiProvider: nextAiProvider,
+    aiBaseUrl: nextAiBaseUrl,
+    aiModel: aiModel === undefined ? settings.aiModel : String(aiModel || '').trim(),
+    aiAllowPrivateBaseUrl: nextAiAllowPrivate,
+    aiApiKeyEncrypted: nextAiApiKeyEncrypted,
     logPaths: nextLogPaths,
     trustProxyHops:
       trustProxyHops === undefined ? settings.trustProxyHops : normalizeTrustProxyHops(trustProxyHops, settings.trustProxyHops),
