@@ -140,12 +140,14 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
             </span>
           </div>
           <div className="sidebar-actions">
-            <button type="button" onClick={onCheckUpdates} disabled={checkingUpdates || updating}>
-              {checkingUpdates ? 'Checking...' : 'Check updates'}
+            <button type="button" onClick={onCheckUpdates} disabled={checkingUpdates || updating} aria-label={checkingUpdates ? 'Checking for updates' : 'Check for updates'} title={collapsed ? (checkingUpdates ? 'Checking for updates' : 'Check for updates') : undefined}>
+              <RefreshCw size={16} className={checkingUpdates ? 'spin' : ''} />
+              <span>{checkingUpdates ? 'Checking...' : 'Check updates'}</span>
             </button>
             {canUpdate && appInfo?.updateAvailable && (
-              <button type="button" className="primary" onClick={onRunUpdate} disabled={updating}>
-                {updating ? 'Updating...' : `Update to v${appInfo?.availableVersion || appInfo?.remoteVersion || appInfo?.version || appVersion}`}
+              <button type="button" className="primary" onClick={onRunUpdate} disabled={updating} aria-label={updating ? 'Updating CaddyUI' : `Update to v${appInfo?.availableVersion || appInfo?.remoteVersion || appInfo?.version || appVersion}`} title={collapsed ? (updating ? 'Updating CaddyUI' : `Update to v${appInfo?.availableVersion || appInfo?.remoteVersion || appInfo?.version || appVersion}`) : undefined}>
+                <Download size={16} />
+                <span>{updating ? 'Updating...' : `Update to v${appInfo?.availableVersion || appInfo?.remoteVersion || appInfo?.version || appVersion}`}</span>
               </button>
             )}
           </div>

@@ -20,6 +20,7 @@
 - Fix confirmed AI enable/disable proposals passing an invalid argument shape to the proxy parser.
 - Reject confirmed AI delete proposals when the expected hostname no longer matches the selected proxy.
 - Replace decorative active-navigation bars with simple filled highlights.
+- Show compact update action icons instead of overflowing text when the sidebar is collapsed.
 
 ### Security
 

@@ -331,6 +331,11 @@ select:focus {
   gap: 6px;
 }
 
+.sidebar.collapsed .sidebar-actions button {
+  justify-content: center;
+  padding-inline: 0;
+}
+
 .content {
   margin-left: 272px;
   max-width: 1800px;
