@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="CaddyUI is a self-hosted control plane for Caddy: manage proxies, TLS, logs, access, and live configuration from one calm interface." />
+    <meta name="description" content="CaddyUI is a self-hosted control plane for Caddy. Manage proxies, middleware, TLS, logs, users, and the live Caddy runtime." />
     <meta name="theme-color" content="#0f0f10" />
     <meta property="og:title" content="CaddyUI — a calm control plane for Caddy" />
     <meta property="og:description" content="Manage reverse proxies, TLS, logs, access, and live Caddy configuration from one self-hosted interface." />
@@ -14,141 +14,75 @@
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
-
     <header class="site-header">
-      <a class="brand" href="#top" aria-label="CaddyUI home">
-        <span class="brand-mark" aria-hidden="true"><span></span></span>
-        <span>Caddy<span>UI</span></span>
-      </a>
-      <nav aria-label="Primary navigation">
-        <a href="#control">Control</a>
-        <a href="#install">Install</a>
-        <a href="https://github.com/PolderLabsVOF/CaddyUI">GitHub</a>
-      </nav>
-      <a class="header-action" href="https://github.com/PolderLabsVOF/CaddyUI/releases/latest">Latest release <span aria-hidden="true">↗</span></a>
+      <a class="brand" href="#top" aria-label="CaddyUI home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>Caddy<span>UI</span></span></a>
+      <nav aria-label="Primary navigation"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a href="#install">Install</a><a href="https://github.com/PolderLabsVOF/CaddyUI">GitHub</a></nav>
+      <a class="header-action" href="https://github.com/PolderLabsVOF/CaddyUI/releases/latest">Latest release</a>
     </header>
 
     <main id="main">
       <section class="hero" id="top">
-        <div class="hero-copy reveal">
-          <p class="eyebrow"><span></span> Self-hosted · Caddy-native</p>
-          <h1>Your Caddy server,<br /><em>under control.</em></h1>
-          <p class="hero-lede">Manage reverse proxies, certificates, logs, access, and live configuration without losing touch with the infrastructure underneath.</p>
-          <div class="hero-actions">
-            <a class="button button-primary" href="#install">Install CaddyUI <span aria-hidden="true">↓</span></a>
-            <a class="button button-secondary" href="https://github.com/PolderLabsVOF/CaddyUI">View source <span aria-hidden="true">↗</span></a>
-          </div>
-          <p class="hero-note">Open source · Runs on your host · No cloud account</p>
+        <div class="hero-copy">
+          <p class="kicker">Self-hosted Caddy management</p>
+          <h1>A clearer way to run Caddy.</h1>
+          <p class="hero-lede">Manage reverse proxies, reusable middleware, TLS, logs, users, and the live Caddy runtime from one focused interface.</p>
+          <div class="hero-actions"><a class="button primary-button" href="#install">Install CaddyUI</a><a class="button secondary-button" href="https://github.com/PolderLabsVOF/CaddyUI">View on GitHub</a></div>
+          <ul class="hero-points" aria-label="Project qualities"><li>Open source</li><li>Runs on your host</li><li>No cloud account</li></ul>
         </div>
 
-        <div class="control-window reveal" aria-label="Illustration of the CaddyUI proxy dashboard">
-          <div class="window-bar">
-            <span class="window-brand"><i class="brand-mark mini" aria-hidden="true"><i></i></i> CaddyUI</span>
-            <span class="window-status"><i></i> Caddy online</span>
+        <div class="product-frame" aria-label="CaddyUI proxy management screen">
+          <div class="mock-topbar">
+            <div class="mock-brand"><span class="mock-square">◧</span><span class="brand-mark small" aria-hidden="true"><i></i><i></i><i></i></span><strong>Caddy<span>UI</span></strong><small>v0.2.27-beta</small></div>
+            <div class="mock-actions"><span>Validate</span><span>Reload Caddy</span><span>♢ local</span><span>☼</span><span>Logout</span></div>
           </div>
-          <div class="app-shell">
-            <aside aria-hidden="true">
-              <b>Control</b>
-              <span class="active">⌁ <i>Proxies</i></span>
-              <span>⌘ <i>Middlewares</i></span>
-              <span>◇ <i>Caddy</i></span>
-              <b>Observe</b>
-              <span>⌾ <i>TLS</i></span>
-              <span>≡ <i>Logs</i></span>
+          <div class="mock-body">
+            <aside class="mock-sidebar">
+              <div><span class="selected"><b>⌘</b> Proxies</span><span><b>◇</b> Middlewares</span><span><b>⌁</b> Runtime</span><span><b>♢</b> TLS</span><span><b>▤</b> Logs</span><span><b>⚙</b> Settings</span></div>
+              <div class="mock-sidebar-bottom"><span>□ Feedback</span><small>v0.2.27-beta <i>Current</i></small><b>Check updates</b></div>
             </aside>
-            <div class="app-main">
-              <div class="app-heading"><div><small>ROUTING</small><strong>Reverse proxies</strong></div><button tabindex="-1">+ Add proxy</button></div>
-              <div class="metric-row">
-                <div><small>Routes</small><strong>04</strong></div>
-                <div><small>Healthy</small><strong class="ok">04</strong></div>
-                <div><small>Certificates</small><strong>06</strong></div>
+            <div class="mock-main">
+              <div class="mock-page-head">
+                <div><h2>Proxies</h2><p>Grouped by domain.</p></div>
+                <div class="mock-page-actions"><small>View</small><span>Sections by domain⌄</span><span>↻ Refresh</span><b>＋ Add proxy</b></div>
               </div>
-              <div class="proxy-list">
-                <div class="proxy-row"><span class="health-dot"></span><div><strong>cloud.example.com</strong><small>127.0.0.1:8080</small></div><span class="secure">TLS</span><span class="latency">18 ms</span></div>
-                <div class="proxy-row"><span class="health-dot"></span><div><strong>notes.example.com</strong><small>127.0.0.1:3000</small></div><span class="secure">TLS</span><span class="latency">24 ms</span></div>
-                <div class="proxy-row"><span class="health-dot"></span><div><strong>status.example.com</strong><small>127.0.0.1:4000</small></div><span class="secure">TLS</span><span class="latency">11 ms</span></div>
+              <div class="mock-stats"><div><strong>4</strong><span>Sites</span></div><div><strong>6</strong><span>Reverse proxies</span></div><div><strong>2</strong><span>Snippets</span></div><div><strong>3</strong><span>Imports used</span></div></div>
+              <div class="mock-search">⌕&nbsp;&nbsp; Search host, upstream, tag, category, or middleware <span>6 proxies shown</span></div>
+              <div class="mock-domain">
+                <div class="domain-head"><div><span class="status-dot"></span><strong>example.com</strong><small>3 routes</small></div><span>＋ Add proxy</span></div>
+                <div class="mock-route"><span class="status-dot"></span><div><strong>cloud.example.com</strong><small>127.0.0.1:8080</small></div><em>cloud</em><small>healthy · 18 ms</small><b>•••</b></div>
+                <div class="mock-route"><span class="status-dot"></span><div><strong>notes.example.com</strong><small>127.0.0.1:3000</small></div><em>notes</em><small>healthy · 24 ms</small><b>•••</b></div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section class="trust-strip" aria-label="Project qualities">
-        <span>LIVE ADMIN API</span><i></i><span>AUTOMATIC TLS</span><i></i><span>ROLE-BASED ACCESS</span><i></i><span>STABLE · BETA · NIGHTLY</span>
-      </section>
-
-      <section class="control-section" id="control">
-        <div class="section-heading reveal">
-          <p class="eyebrow"><span></span> One operating surface</p>
-          <h2>See the whole route,<br />not just the config.</h2>
-          <p>CaddyUI turns routine proxy operations into a clear workflow while keeping the complete Caddy configuration within reach.</p>
-        </div>
-
-        <div class="feature-grid">
-          <article class="feature feature-wide reveal">
-            <div class="feature-copy">
-              <span class="feature-icon">⌁</span>
-              <h3>From hostname to upstream</h3>
-              <p>Create and group routes, reuse middleware, check upstream health, and apply accepted changes through Caddy’s Admin API.</p>
-            </div>
-            <div class="route-map" aria-label="Request flow from browser through CaddyUI to Caddy">
-              <div class="route-node"><small>REQUEST</small><strong>app.example.com</strong></div>
-              <div class="route-line"><i></i><span>HTTPS</span></div>
-              <div class="route-node primary-node"><small>CONTROL</small><strong>CaddyUI</strong></div>
-              <div class="route-line"><i></i><span>ADMIN API</span></div>
-              <div class="route-node"><small>RUNTIME</small><strong>Caddy :443</strong></div>
-            </div>
-          </article>
-
-          <article class="feature reveal">
-            <span class="feature-icon">◇</span>
-            <h3>TLS you can inspect</h3>
-            <p>Spot failed handshakes, upcoming expiry, issuers, SANs, and ACME defaults without a certificate scavenger hunt.</p>
-            <div class="cert-card" aria-hidden="true">
-              <div><span class="health-dot"></span><strong>Certificate healthy</strong></div>
-              <p>example.com</p>
-              <span><small>ISSUER</small> Let's Encrypt</span><span><small>EXPIRES</small> 74 days</span>
-            </div>
-          </article>
-
-          <article class="feature reveal">
-            <span class="feature-icon">≡</span>
-            <h3>Operations in context</h3>
-            <p>Read discovered logs and journal output, validate changes before applying them, and choose the release channel that fits the host.</p>
-            <div class="terminal-lines" aria-hidden="true">
-              <span><i>12:04:18</i> config validated</span>
-              <span><i>12:04:19</i> applied via admin API</span>
-              <span><i>12:04:19</i> <b>✓ serving configuration</b></span>
-            </div>
-          </article>
+      <section class="feature-section" id="features">
+        <div class="section-heading"><div><p class="kicker">Everything in one place</p><h2>Daily Caddy operations, without the scavenger hunt.</h2></div><p>CaddyUI keeps common work approachable and leaves the complete runtime available when you need the detail.</p></div>
+        <div class="feature-list">
+          <article><span>⌘</span><div><h3>Reverse proxies</h3><p>Create, group, search, enable, and edit routes. See upstream health beside the configuration it belongs to.</p></div></article>
+          <article><span>◇</span><div><h3>Reusable middleware</h3><p>Maintain shared snippets and route-level building blocks without copying directives between sites.</p></div></article>
+          <article><span>⌁</span><div><h3>Live runtime</h3><p>Inspect the active Caddy JSON, runtime IDs, PKI, and reverse-proxy upstreams through the Admin API.</p></div></article>
+          <article><span>♢</span><div><h3>TLS inventory</h3><p>Review handshakes, expiry, issuer, SANs, fingerprints, and global ACME defaults in one view.</p></div></article>
+          <article><span>▤</span><div><h3>Logs and journal</h3><p>Read discovered Caddy logs and journal output without switching tools or losing operational context.</p></div></article>
+          <article><span>◎</span><div><h3>Users and roles</h3><p>Give local users view, edit, or admin access. Sensitive API credentials remain on the server.</p></div></article>
+          <article><span>✓</span><div><h3>Safer changes</h3><p>Validate before applying, reload deliberately, and receive clear feedback when Caddy rejects a change.</p></div></article>
+          <article><span>↻</span><div><h3>Managed updates</h3><p>Stay on stable for production or explicitly select beta and nightly builds from the update controls.</p></div></article>
         </div>
       </section>
 
-      <section class="principles">
-        <div class="principle reveal"><span>01</span><div><h3>Self-hosted by design</h3><p>Your configuration, credentials, and operational data stay on infrastructure you control.</p></div></div>
-        <div class="principle reveal"><span>02</span><div><h3>Caddy stays Caddy</h3><p>Changes are validated and applied through the native Admin API, with the raw configuration still available.</p></div></div>
-        <div class="principle reveal"><span>03</span><div><h3>Built for daily use</h3><p>Focused screens for proxies, TLS, logs, users, updates, and runtime inspection keep common work close.</p></div></div>
+      <section class="how-section" id="how-it-works">
+        <div class="how-intro"><p class="kicker">Caddy-native by design</p><h2>The Admin API stays the source of truth.</h2><p>CaddyUI validates and applies changes through Caddy’s own API. API-managed installations restart with <code>--resume</code>, so the active configuration survives service restarts.</p></div>
+        <div class="flow" aria-label="Configuration flow"><div><small>YOU MANAGE</small><strong>CaddyUI</strong><span>Authenticated session</span></div><b>→</b><div><small>VALIDATE + APPLY</small><strong>Caddy Admin API</strong><span>Local by default</span></div><b>→</b><div><small>SERVE</small><strong>Live Caddy config</strong><span>Restart with --resume</span></div></div>
+        <div class="detail-grid"><div><h3>Server-side secrets</h3><p>The browser only learns whether an API token is configured. Production requires a strong <code>CADDY_UI_SECRET</code>.</p></div><div><h3>One-time bootstrap</h3><p>Select a Caddyfile during onboarding as an editor source, then manage the running instance through the API.</p></div><div><h3>Your network controls</h3><p>Place CaddyUI behind the authentication layer, VPN, or network policy that already protects your infrastructure.</p></div></div>
       </section>
 
       <section class="install-section" id="install">
-        <div class="install-copy reveal">
-          <p class="eyebrow"><span></span> Start on the Caddy host</p>
-          <h2>One command.<br />Then it’s yours.</h2>
-          <p>The stable installer creates the service, configures API mode where supported, and gives you a one-time onboarding URL.</p>
-          <a href="https://github.com/PolderLabsVOF/CaddyUI#first-run-checklist">Read the first-run checklist <span aria-hidden="true">→</span></a>
-        </div>
-        <div class="command-card reveal">
-          <div class="command-top"><span>TERMINAL</span><button class="copy-button" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/main/scripts/install.sh | bash">Copy</button></div>
-          <pre><code><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/<br />  PolderLabsVOF/CaddyUI/main/scripts/install.sh | bash</code></pre>
-          <div class="command-foot"><span><i></i> Stable channel</span><span>Linux · Node.js 22+</span></div>
-        </div>
+        <div class="install-copy"><p class="kicker">Install the stable release</p><h2>Start on your Caddy host.</h2><p>The installer creates the service, configures API mode where supported, and prints a one-time onboarding URL. Run it again later to update.</p><div class="install-links"><a href="https://github.com/PolderLabsVOF/CaddyUI#first-run-checklist">First-run checklist →</a><a href="https://github.com/PolderLabsVOF/CaddyUI/releases">Release channels →</a></div></div>
+        <div class="command-card"><div><span>Terminal</span><button class="copy-button" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/main/scripts/install.sh | bash">Copy</button></div><pre><code><span>$</span> curl -fsSL https://raw.githubusercontent.com/<br />  PolderLabsVOF/CaddyUI/main/scripts/install.sh | bash</code></pre><small><i></i> Stable channel</small></div>
       </section>
     </main>
 
-    <footer>
-      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"><span></span></span><span>Caddy<span>UI</span></span></a>
-      <p>A calm control plane for Caddy.</p>
-      <div><a href="https://github.com/PolderLabsVOF/CaddyUI/releases">Releases</a><a href="https://github.com/PolderLabsVOF/CaddyUI/issues">Issues</a><a href="https://github.com/PolderLabsVOF/CaddyUI/blob/main/LICENSE">License</a></div>
-    </footer>
+    <footer><a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>Caddy<span>UI</span></span></a><p>A calm control plane for Caddy.</p><div><a href="https://github.com/PolderLabsVOF/CaddyUI/releases">Releases</a><a href="https://github.com/PolderLabsVOF/CaddyUI/issues">Issues</a><a href="https://github.com/PolderLabsVOF/CaddyUI/blob/main/LICENSE">License</a></div></footer>
   </body>
 </html>
