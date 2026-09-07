@@ -8,10 +8,13 @@ import fssync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import net from 'node:net';
 import dns from 'node:dns/promises';
 import tls from 'node:tls';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { z } from 'zod';
 import {
   parseCaddyfile,
   appendSimpleProxy,
@@ -47,6 +50,7 @@ const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
 const SESSION_PATH = path.join(DATA_DIR, 'sessions.json');
 const DEFAULT_SECRET = 'dev-change-me-caddy-ui';
 const JWT_SECRET = process.env.CADDY_UI_SECRET || DEFAULT_SECRET;
+const MCP_TOKEN = String(process.env.CADDYUI_MCP_TOKEN || '').trim();
 const COOKIE_NAME = 'caddyui_token';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const SETUP_TOKEN = process.env.CADDY_UI_SETUP_TOKEN || '';
@@ -133,6 +137,9 @@ if (IS_PRODUCTION && weakSecretConfigured) {
 if (!IS_PRODUCTION && weakSecretConfigured) {
   console.warn('[security] Using a weak CADDY_UI_SECRET outside production; set at least 32 characters.');
 }
+if (MCP_TOKEN && MCP_TOKEN.length < 32) {
+  throw new Error('Set CADDYUI_MCP_TOKEN to a strong value (at least 32 characters).');
+}
 
 app.set('trust proxy', runtimeTrustProxyHops > 0 ? runtimeTrustProxyHops : false);
 
@@ -160,7 +167,7 @@ app.use('/api', (_req, res, next) => {
 app.use((_req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   );
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -388,6 +395,17 @@ function normalizeSettings(settings) {
     : base.user
       ? [normalizeUser(base.user, 'admin')]
       : [];
+  const mcpKeys = Array.isArray(base.mcpKeys)
+    ? base.mcpKeys
+        .map((key) => ({
+          id: String(key?.id || '').trim(),
+          name: String(key?.name || '').trim().slice(0, 80),
+          tokenHash: String(key?.tokenHash || '').trim(),
+          createdAt: String(key?.createdAt || ''),
+          lastUsedAt: String(key?.lastUsedAt || ''),
+        }))
+        .filter((key) => key.id && key.name && /^[a-f0-9]{64}$/i.test(key.tokenHash))
+    : [];
   return {
     configured: Boolean(base.configured),
     configMode: normalizeConfigMode(base.configMode, DEFAULT_CONFIG_MODE),
@@ -406,6 +424,8 @@ function normalizeSettings(settings) {
     allowRemoteSetup: normalizeBoolean(base.allowRemoteSetup, ENV_ALLOW_REMOTE_SETUP),
     secureCookieMode: normalizeCookieMode(base.secureCookieMode, ENV_SECURE_COOKIE_MODE),
     allowedOrigins: normalizeAllowedOrigins(base.allowedOrigins ?? ENV_ALLOWED_ORIGINS),
+    mcpEnabled: typeof base.mcpEnabled === 'boolean' ? base.mcpEnabled : Boolean(MCP_TOKEN),
+    mcpKeys,
     users,
   };
 }
@@ -502,6 +522,12 @@ function publicSettings(settings, currentUsername = '') {
     allowRemoteSetup: Boolean(normalized.allowRemoteSetup),
     secureCookieMode: normalized.secureCookieMode || 'auto',
     allowedOrigins: normalized.allowedOrigins || [],
+    mcp: {
+      enabled: Boolean(normalized.mcpEnabled),
+      endpoint: '/api/mcp',
+      environmentKeyConfigured: Boolean(MCP_TOKEN),
+      keys: normalized.mcpKeys.map(({ id, name, createdAt, lastUsedAt }) => ({ id, name, createdAt, lastUsedAt })),
+    },
     username: currentUser?.username || '',
     role: currentUser?.role || '',
   };
@@ -538,6 +564,12 @@ function statusSettings(settings, authenticated, currentUsername = '') {
     allowRemoteSetup: Boolean(normalized.allowRemoteSetup),
     secureCookieMode: normalized.secureCookieMode || 'auto',
     allowedOrigins: normalized.allowedOrigins || [],
+    mcp: {
+      enabled: Boolean(normalized.mcpEnabled),
+      endpoint: '/api/mcp',
+      environmentKeyConfigured: Boolean(MCP_TOKEN),
+      keys: normalized.mcpKeys.map(({ id, name, createdAt, lastUsedAt }) => ({ id, name, createdAt, lastUsedAt })),
+    },
   };
 }
 
@@ -759,8 +791,22 @@ async function loadResetConfigTemplate() {
 }
 
 function caddyPathPart(value = '') {
-  if (Array.isArray(value)) return value.filter(Boolean).join('/');
-  return String(value || '').trim().replace(/^\/+|\/+$/g, '');
+  const rawSegments = Array.isArray(value)
+    ? value.flatMap((part) => String(part || '').split('/'))
+    : String(value || '').trim().replace(/^\/+|\/+$/g, '').split('/');
+  return rawSegments
+    .filter((segment) => segment !== '')
+    .map((segment) => {
+      let decoded = segment;
+      try { decoded = decodeURIComponent(segment); } catch {}
+      if (decoded === '.' || decoded === '..' || /[\\\0?#]/.test(decoded)) {
+        const error = new Error('Invalid Caddy API path.');
+        error.statusCode = 400;
+        throw error;
+      }
+      return encodeURIComponent(decoded);
+    })
+    .join('/');
 }
 
 function caddyEndpoint(scope, path = '') {
@@ -804,6 +850,56 @@ async function caddyResponseData(response) {
     } catch {}
   }
   return { status: response.status, ok: response.ok, etag, contentType, raw: text, data };
+}
+
+function parsePrometheusLabels(source = '') {
+  const labels = {};
+  const pattern = /([a-zA-Z_][a-zA-Z0-9_]*)="((?:\\.|[^"\\])*)"(?:,|$)/g;
+  let match;
+  while ((match = pattern.exec(source))) {
+    labels[match[1]] = match[2].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  return labels;
+}
+
+function parsePrometheusMetrics(content = '') {
+  const metadata = new Map();
+  const samples = [];
+  for (const rawLine of String(content || '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const meta = line.match(/^#\s+(HELP|TYPE)\s+([^\s]+)\s+(.+)$/);
+    if (meta) {
+      const entry = metadata.get(meta[2]) || {};
+      entry[meta[1].toLowerCase()] = meta[3];
+      metadata.set(meta[2], entry);
+      continue;
+    }
+    if (line.startsWith('#')) continue;
+    const sample = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(.*)\})?\s+([^\s]+)(?:\s+\d+)?$/);
+    if (!sample) continue;
+    const value = Number(sample[3]);
+    if (!Number.isFinite(value)) continue;
+    const family = sample[1].replace(/_(?:bucket|count|sum|created)$/, '');
+    const details = metadata.get(sample[1]) || metadata.get(family) || {};
+    samples.push({
+      name: sample[1],
+      labels: parsePrometheusLabels(sample[2] || ''),
+      value,
+      ...details,
+    });
+  }
+  const sum = (name) => samples.filter((sample) => sample.name === name).reduce((total, sample) => total + sample.value, 0);
+  const first = (name) => samples.find((sample) => sample.name === name)?.value;
+  return {
+    samples,
+    summary: {
+      goroutines: first('go_goroutines'),
+      memoryBytes: first('go_memstats_alloc_bytes'),
+      requestsInFlight: sum('caddy_http_requests_in_flight'),
+      processStartTime: first('process_start_time_seconds'),
+    },
+  };
 }
 
 async function applyConfigContent(settings, content, { backup = false } = {}) {
@@ -958,52 +1054,42 @@ function tcpCheck(host, port, timeout = 1800) {
   });
 }
 
-async function checkProxyHealth(parsed) {
-  async function probeTarget(host = '', port = 0) {
-    const value = String(host || '').trim();
-    if (!value) return { online: false, error: 'missing', host: '', port };
-    const ipVersion = net.isIP(value);
-    if (ipVersion > 0) {
-      if (privateIp(value)) return { online: false, error: 'blocked-private-address', host: value, port };
-      const direct = await tcpCheck(value, port);
-      return { ...direct, host: value, port };
-    }
-    try {
-      const resolved = await dns.lookup(value);
-      const resolvedAddress = String(resolved.address || '');
-      if (!resolvedAddress) return { online: false, error: 'lookup_failed', host: value, port };
-      if (privateIp(resolvedAddress)) {
-        return { online: false, error: 'blocked-private-address', host: value, port };
-      }
-      // Connect to the already-validated IP to avoid a second DNS resolution step.
-      const direct = await tcpCheck(resolvedAddress, port);
-      return { ...direct, host: value, port };
-    } catch (error) {
-      return { online: false, error: error.code || error.message || 'lookup_failed', host: value, port };
-    }
+// Targets come from the active Caddy configuration. Private and loopback
+// addresses are expected for Docker, LXC, and LAN upstreams.
+async function probeTarget(host = '', port = 0) {
+  const value = String(host || '').trim();
+  if (!value) return { online: false, error: 'missing', host: '', port };
+  const ipVersion = net.isIP(value);
+  if (ipVersion > 0) {
+    const direct = await tcpCheck(value, port);
+    return { ...direct, host: value, port };
   }
+  try {
+    const resolved = await dns.lookup(value);
+    const resolvedAddress = String(resolved.address || '');
+    if (!resolvedAddress) return { online: false, error: 'lookup_failed', host: value, port };
+    const direct = await tcpCheck(resolvedAddress, port);
+    return { ...direct, host: value, port };
+  } catch (error) {
+    return { online: false, error: error.code || error.message || 'lookup_failed', host: value, port };
+  }
+}
 
+async function checkProxyHealth(parsed) {
   const results = {};
   await Promise.all(
     (parsed.sites || []).map(async (site) => {
       if (site.disabled) {
         results[site.id] = {
           local: { online: false, error: 'disabled', disabled: true, host: '', port: 0 },
-          domain: { online: false, error: 'disabled', disabled: true, host: splitHostPort(site.addresses?.[0] || '').host, port: 443 },
         };
         return;
       }
-      const domain = site.addresses?.[0] || '';
       const upstream = site.proxies?.[0]?.upstreams?.[0] || '';
       const target = splitHostPort(upstream);
-      const domainHost = splitHostPort(domain).host;
-      const [local, domainResult] = await Promise.all([
-        probeTarget(target.host, target.port),
-        probeTarget(domainHost, 443),
-      ]);
+      const local = await probeTarget(target.host, target.port);
       results[site.id] = {
         local,
-        domain: domainResult,
       };
     })
   );
@@ -1051,6 +1137,267 @@ async function collectLogs(settings, lines = 200) {
   }
   return entries;
 }
+
+function parseCaddyAccessLog(line) {
+  const text = String(line || '').trim();
+  const jsonStart = text.indexOf('{');
+  try {
+    const record = JSON.parse(jsonStart >= 0 ? text.slice(jsonStart) : text);
+    const request = record.request || {};
+    const status = Number(record.status);
+    const timestamp = typeof record.ts === 'number' ? record.ts * 1000 : Date.parse(record.ts || record.time);
+    const rawHeaderHost = request.headers?.Host ?? request.headers?.host;
+    const headerHost = Array.isArray(rawHeaderHost) ? rawHeaderHost[0] : rawHeaderHost;
+    const host = request.host || headerHost || record.host;
+    if (!host || !Number.isFinite(status) || !Number.isFinite(timestamp)) return null;
+    return {
+      timestamp,
+      host: String(host),
+      status,
+      bytes: Math.max(0, Number(record.size || record.bytes_written || 0) || 0),
+      duration: Math.max(0, Number(record.duration || record.duration_ns / 1e9 || 0) || 0),
+      visitor: String(request.remote_ip || request.client_ip || ''),
+    };
+  } catch {
+    const common = text.match(/^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(?:\S+)\s+([^\s"]+)[^"]*"\s+(\d{3})\s+(\d+|-)/);
+    if (!common) return null;
+    const [, visitor, timestampText, requestTarget, statusText, sizeText] = common;
+    const timestamp = Date.parse(timestampText.replace(/:(?=\d{2}:\d{2}:\d{2}\s)/, ' '));
+    const host = requestTarget.startsWith('http') ? (() => {
+      try { return new URL(requestTarget).host; } catch { return 'unknown host'; }
+    })() : 'unknown host';
+    if (!Number.isFinite(timestamp)) return null;
+    return {
+      timestamp,
+      host,
+      status: Number(statusText),
+      bytes: sizeText === '-' ? 0 : Number(sizeText),
+      duration: 0,
+      visitor,
+    };
+  }
+}
+
+async function trafficAnalytics(settings, range) {
+  const hours = range === '7d' ? 168 : 24;
+  const now = Date.now();
+  const interval = range === '7d' ? 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
+  const start = now - hours * 60 * 60 * 1000;
+  const buckets = Array.from({ length: range === '7d' ? 7 : 24 }, (_, index) => ({ start: new Date(now - (range === '7d' ? 6 - index : 23 - index) * interval).setMinutes(0, 0, 0), requests: 0 }));
+  const hosts = new Map(); const statusCodes = new Map(); const visitors = new Set();
+  let requests = 0; let errors = 0; let bytes = 0; let totalDuration = 0; let unparsedLines = 0;
+  const logs = await collectLogs(settings, 2000);
+  for (const entry of logs) {
+    for (const line of String(entry.content || '').split('\n')) {
+      if (!line.trim()) continue;
+      const record = parseCaddyAccessLog(line);
+      if (!record) { unparsedLines += 1; continue; }
+      if (record.timestamp < start || record.timestamp > now + 60_000) continue;
+      requests += 1; bytes += record.bytes; totalDuration += record.duration;
+      if (record.status >= 400) errors += 1;
+      if (record.visitor) visitors.add(record.visitor);
+      const bucketIndex = Math.min(buckets.length - 1, Math.max(0, Math.floor((record.timestamp - start) / interval)));
+      buckets[bucketIndex].requests += 1;
+      const host = hosts.get(record.host) || { name: record.host, requests: 0, bytes: 0 };
+      host.requests += 1; host.bytes += record.bytes; hosts.set(record.host, host);
+      statusCodes.set(record.status, (statusCodes.get(record.status) || 0) + 1);
+    }
+  }
+  return {
+    requests, errors, bytes, uniqueVisitors: visitors.size, averageDuration: requests ? totalDuration / requests : 0, buckets,
+    hosts: [...hosts.values()].sort((a, b) => b.requests - a.requests).slice(0, 5),
+    statusCodes: [...statusCodes.entries()].map(([code, count]) => ({ code, count })).sort((a, b) => a.code - b.code),
+    unparsedLines,
+  };
+}
+
+function mcpResult(value) {
+  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
+}
+
+function mcpError(error) {
+  return { content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }], isError: true };
+}
+
+async function reloadWorkingConfig() {
+  const settings = await loadSettings();
+  const { content } = await readWorkingConfig();
+  if (!content.trim()) throw new Error('No config content available to reload.');
+  const response = await requestCaddyApi(settings, '/load', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/caddyfile', 'Cache-Control': 'must-revalidate' },
+    body: content,
+    timeoutMs: 12_000,
+  });
+  const output = await response.text();
+  if (!response.ok) throw new Error(output || `Caddy API reload failed (${response.status}).`);
+  return { ok: true, message: 'Reloaded Caddy via the Admin API.' };
+}
+
+function createMcpServer() {
+  const server = new McpServer({ name: 'caddyui', version: APP_VERSION });
+  const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true };
+  const writesConfig = { readOnlyHint: false, destructiveHint: false, idempotentHint: true };
+
+  server.registerTool('caddyui_overview', {
+    title: 'Get CaddyUI overview',
+    description: 'Read CaddyUI status, the parsed Caddyfile inventory, proxy health, and active Caddy runtime metrics.',
+    annotations: readOnly,
+  }, async () => {
+    try {
+      const [settings, working] = await Promise.all([loadSettings(), readWorkingConfig()]);
+      const parsed = await parseConfigWithMeta(working.content);
+      const [health, metrics] = await Promise.all([
+        checkProxyHealth(parsed),
+        requestCaddyApi(settings, '/metrics', { method: 'GET', timeoutMs: 8_000 })
+          .then(async (response) => response.ok ? parsePrometheusMetrics(await response.text()).summary : null)
+          .catch(() => null),
+      ]);
+      return mcpResult({ version: APP_VERSION, configPath: working.path, parsed, health, metrics });
+    } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_get_config', {
+    title: 'Get Caddyfile',
+    description: 'Read the complete Caddyfile working copy and parsed proxy and middleware inventory.',
+    annotations: readOnly,
+  }, async () => {
+    try {
+      const working = await readWorkingConfig();
+      return mcpResult({ ...working, parsed: await parseConfigWithMeta(working.content) });
+    } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_validate_config', {
+    title: 'Validate Caddyfile',
+    description: 'Validate proposed Caddyfile content without changing the running configuration.',
+    inputSchema: { content: z.string().min(1).describe('Complete proposed Caddyfile content.') },
+    annotations: readOnly,
+  }, async ({ content }) => {
+    try { return mcpResult(await validateConfigForSettings(await loadSettings(), content)); } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_apply_config', {
+    title: 'Apply Caddyfile',
+    description: 'Validate and apply a complete Caddyfile through CaddyUI. This changes the live Caddy configuration and saves a backup.',
+    inputSchema: { content: z.string().min(1).describe('Complete Caddyfile content to validate and apply.') },
+    annotations: writesConfig,
+  }, async ({ content }) => {
+    try {
+      const settings = await loadSettings();
+      const validation = await validateConfigForSettings(settings, content);
+      if (!validation.ok) return mcpResult({ ok: false, validation, parsed: await parseConfigWithMeta(content) });
+      const { backup } = await applyConfigContent(settings, content, { backup: true });
+      const parsed = await parseConfigWithMeta(content);
+      await pruneProxyMetaForParsed(parsed);
+      return mcpResult({ ok: true, backup, validation, parsed });
+    } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_reload', {
+    title: 'Reload Caddy',
+    description: 'Reload Caddy from the current CaddyUI working configuration.',
+    annotations: writesConfig,
+  }, async () => {
+    try { return mcpResult(await reloadWorkingConfig()); } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_runtime_request', {
+    title: 'Call Caddy Admin API',
+    description: 'Read or update Caddy’s native Admin API. Use a relative API path only, such as /config/ or /id/my-handler.',
+    inputSchema: {
+      path: z.string().min(1).describe('Relative Caddy Admin API path, beginning with /.') ,
+      method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET'),
+      body: z.string().optional().describe('Optional request body; use JSON for native Caddy configuration writes.'),
+      contentType: z.string().optional().describe('Optional request Content-Type, such as application/json.'),
+    },
+    annotations: writesConfig,
+  }, async ({ path: requestPath, method, body, contentType }) => {
+    try {
+      const normalizedPath = `/${caddyPathPart(String(requestPath).replace(/^\/+/, ''))}`;
+      const response = await requestCaddyApi(await loadSettings(), normalizedPath, {
+        method,
+        headers: contentType ? { 'Content-Type': contentType } : {},
+        body: body === undefined ? undefined : body,
+        timeoutMs: 12_000,
+      });
+      const raw = await response.text();
+      let value = raw;
+      try { value = raw ? JSON.parse(raw) : null; } catch {}
+      return mcpResult({ ok: response.ok, status: response.status, value });
+    } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_logs', {
+    title: 'Read Caddy logs',
+    description: 'Read recent Caddy logs from configured files, the system journal, or both.',
+    inputSchema: {
+      lines: z.number().int().min(10).max(2_000).default(200),
+      source: z.enum(['all', 'files', 'journal']).default('all'),
+    },
+    annotations: readOnly,
+  }, async ({ lines, source }) => {
+    try { return mcpResult({ logs: await collectLogs({ ...(await loadSettings()), logMode: source }, lines) }); } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_analytics', {
+    title: 'Get traffic analytics',
+    description: 'Read request, error, response-time, host, status-code, and traffic data from Caddy access logs.',
+    inputSchema: { range: z.enum(['24h', '7d']).default('24h') },
+    annotations: readOnly,
+  }, async ({ range }) => {
+    try { return mcpResult(await trafficAnalytics(await loadSettings(), range)); } catch (error) { return mcpError(error); }
+  });
+
+  return server;
+}
+
+function hashMcpToken(token) {
+  return createHash('sha256').update(String(token || ''), 'utf8').digest('hex');
+}
+
+async function requireMcpToken(req, res, next) {
+  const settings = await loadSettings();
+  const normalized = normalizeSettings(settings);
+  if (!normalized.mcpEnabled || (!MCP_TOKEN && normalized.mcpKeys.length === 0)) return res.status(404).json({ error: 'Not found' });
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  const tokenHash = hashMcpToken(token);
+  const key = normalized.mcpKeys.find((item) => secureEqual(tokenHash, item.tokenHash));
+  if (!secureEqual(token, MCP_TOKEN) && !key) {
+    res.setHeader('WWW-Authenticate', 'Bearer realm="CaddyUI MCP"');
+    return res.status(401).json({ error: 'Invalid MCP bearer token.' });
+  }
+  if (key && (!key.lastUsedAt || Date.now() - Date.parse(key.lastUsedAt) > 60_000)) {
+    const now = new Date().toISOString();
+    const nextSettings = { ...normalized, mcpKeys: normalized.mcpKeys.map((item) => item.id === key.id ? { ...item, lastUsedAt: now } : item) };
+    await saveSettings(nextSettings);
+  }
+  return next();
+}
+
+const mcpSessions = new Map();
+
+app.all('/api/mcp', requireMcpToken, async (req, res) => {
+  const requestedSessionId = String(req.headers['mcp-session-id'] || '').trim();
+  let session = requestedSessionId ? mcpSessions.get(requestedSessionId) : null;
+  if (requestedSessionId && !session) return res.status(404).json({ error: 'MCP session not found.' });
+  if (!session) {
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), enableJsonResponse: true });
+    const server = createMcpServer();
+    session = { server, transport };
+    transport.onclose = () => {
+      if (transport.sessionId) mcpSessions.delete(transport.sessionId);
+      server.close().catch(() => {});
+    };
+    await server.connect(transport);
+  }
+  try {
+    await session.transport.handleRequest(req, res, req.body);
+    if (session.transport.sessionId) mcpSessions.set(session.transport.sessionId, session);
+  } catch (error) {
+    if (!res.headersSent) res.status(500).json({ error: error.message || 'MCP request failed.' });
+  }
+});
 
 async function validateConfig(content) {
   const tmp = path.join(os.tmpdir(), `caddyui-${process.pid}-${Date.now()}-${randomUUID()}.Caddyfile`);
@@ -1566,7 +1913,7 @@ app.post('/api/caddy/load', requireTrustedOrigin, auth, requirePermission('edit'
       error: result.ok ? '' : result.raw,
     });
   } catch (error) {
-    return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+    return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
   }
 });
 
@@ -1582,7 +1929,7 @@ app.post('/api/caddy/stop', requireTrustedOrigin, auth, requirePermission('admin
       error: result.ok ? '' : result.raw,
     });
   } catch (error) {
-    return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+    return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
   }
 });
 
@@ -1617,7 +1964,7 @@ app.post('/api/caddy/adapt', requireTrustedOrigin, auth, requirePermission('edit
       error: result.ok ? '' : result.raw,
     });
   } catch (error) {
-    return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+    return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
   }
 });
 
@@ -1639,7 +1986,7 @@ app.get(caddyConfigRoutes, auth, requirePermission('view'), async (req, res) => 
       error: result.ok ? '' : result.raw,
     });
   } catch (error) {
-    return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+    return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
   }
 });
 
@@ -1668,7 +2015,7 @@ for (const method of ['post', 'put', 'patch', 'delete']) {
         error: result.ok ? '' : result.raw,
       });
     } catch (error) {
-      return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+      return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
     }
   });
 }
@@ -1691,7 +2038,7 @@ app.get(caddyIdRoutes, auth, requirePermission('view'), async (req, res) => {
       error: result.ok ? '' : result.raw,
     });
   } catch (error) {
-    return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+    return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
   }
 });
 
@@ -1723,7 +2070,7 @@ for (const method of ['post', 'put', 'patch', 'delete']) {
         error: result.ok ? '' : result.raw,
       });
     } catch (error) {
-      return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+      return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
     }
   });
 }
@@ -1761,6 +2108,27 @@ app.get('/api/caddy/pki/ca/:id/certificates', auth, requirePermission('view'), a
     });
   } catch (error) {
     return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+  }
+});
+
+app.get('/api/caddy/metrics', auth, requirePermission('view'), async (_req, res) => {
+  try {
+    const settings = await loadSettings();
+    const response = await requestCaddyApi(settings, '/metrics', {
+      method: 'GET',
+      headers: { Accept: 'text/plain' },
+      timeoutMs: 8000,
+    });
+    const raw = await response.text();
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: raw || `Caddy metrics request failed (${response.status}).`,
+        status: response.status,
+      });
+    }
+    return res.json({ ok: true, raw, ...parsePrometheusMetrics(raw) });
+  } catch (error) {
+    return res.status(503).json({ error: error.message || 'Caddy metrics are unavailable.' });
   }
 });
 
@@ -1887,7 +2255,7 @@ app.post('/api/config', requireTrustedOrigin, auth, requirePermission('edit'), a
   }
 });
 
-app.get('/api/proxies/health', auth, requirePermission('edit'), async (_req, res) => {
+app.get('/api/proxies/health', auth, requirePermission('view'), requireRateLimit('proxies-health', 30, 60_000), async (_req, res) => {
   try {
     const { content } = await readWorkingConfig();
     const parsed = await parseConfigWithMeta(content);
@@ -2072,6 +2440,11 @@ app.get('/api/logs', auth, requirePermission('view'), async (req, res) => {
   res.json({ logs: await collectLogs({ ...settings, logMode: mode }, bounded) });
 });
 
+app.get('/api/analytics', auth, requirePermission('view'), async (req, res) => {
+  const range = req.query.range === '7d' ? '7d' : '24h';
+  res.json(await trafficAnalytics(await loadSettings(), range));
+});
+
 app.get('/api/events', auth, requirePermission('view'), async (req, res) => {
   const store = await stateStore;
   const limit = Number(req.query.limit || 200);
@@ -2177,6 +2550,7 @@ app.post('/api/ai/conversations/:id/messages', requireTrustedOrigin, auth, requi
     const conversation = await store.getAiConversation(req.params.id, req.user.username);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found.' });
     await store.appendAiMessage({ id: randomUUID(), conversationId: conversation.id, username: req.user.username, role: 'user', content: text, createdAt: Date.now() });
+    await store.nameAiConversation(conversation.id, req.user.username, summarizeText(text, 72));
     const messages = await store.listAiMessages(conversation.id, req.user.username);
     const context = await aiContextForUser(req.user);
     const controller = new AbortController();
@@ -2218,11 +2592,12 @@ app.post('/api/ai/actions/:id/confirm', requireTrustedOrigin, auth, requirePermi
       const parsed = parseCaddyfile(content);
       const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
       if (!previous) throw new Error('Proxy not found.');
-      next = setProxyDisabled(content, action.args.line, action.args.disabled === true);
+      next = setProxyDisabled(content, { siteLine: action.args.line, disabled: action.args.disabled === true });
     } else if (action.actionType === 'delete_proxy') {
       const parsed = parseCaddyfile(content);
       const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
       if (!previous) throw new Error('Proxy not found.');
+      if (action.args.expectedHost && !previous.addresses?.includes(action.args.expectedHost)) throw new Error('Proxy host changed since this action was proposed. Ask the assistant to prepare it again.');
       next = deleteBlockAtLine(content, action.args.line);
     } else if (action.actionType === 'reload_caddy') {
       await store.finishAiPendingAction(action.id, req.user.username, 'succeeded');
@@ -2269,6 +2644,7 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
     aiAllowPrivateBaseUrl,
     aiApiKey,
     aiApiKeyClear,
+    mcpEnabled,
   } = req.body || {};
   const requestedMode = 'api';
   const requestedCaddyApiUrl = caddyApiUrl === undefined ? settings.caddyApiUrl : normalizeApiUrl(caddyApiUrl, settings.caddyApiUrl);
@@ -2279,7 +2655,8 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
     trustProxyHops !== undefined ||
     allowRemoteSetup !== undefined ||
     secureCookieMode !== undefined ||
-    allowedOrigins !== undefined;
+    allowedOrigins !== undefined ||
+    mcpEnabled !== undefined;
   if (updatingSecuritySettings && !hasPermission(req.user?.role, 'admin')) {
     return res.status(403).json({ error: 'Admin permission required for security settings.' });
   }
@@ -2324,6 +2701,7 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
       secureCookieMode === undefined ? settings.secureCookieMode : normalizeCookieMode(secureCookieMode, settings.secureCookieMode),
     allowedOrigins:
       allowedOrigins === undefined ? settings.allowedOrigins : normalizeAllowedOrigins(allowedOrigins),
+    mcpEnabled: mcpEnabled === undefined ? settings.mcpEnabled : mcpEnabled === true,
   };
   await saveSettings(next);
   const store = await stateStore;
@@ -2340,6 +2718,31 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
     }
   }
   res.json({ settings: publicSettings(next, req.user.username) });
+});
+
+app.get('/api/mcp/keys', auth, requirePermission('admin'), async (_req, res) => {
+  res.json({ mcp: publicSettings(await loadSettings()).mcp });
+});
+
+app.post('/api/mcp/keys', requireTrustedOrigin, auth, requirePermission('admin'), async (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: 'A key name is required.' });
+  const settings = await loadSettings();
+  const token = `caddyui_mcp_${randomBytes(32).toString('base64url')}`;
+  const key = { id: randomUUID(), name, tokenHash: hashMcpToken(token), createdAt: new Date().toISOString(), lastUsedAt: '' };
+  const next = { ...settings, mcpEnabled: true, mcpKeys: [...normalizeSettings(settings).mcpKeys, key] };
+  await saveSettings(next);
+  res.status(201).json({ key: { id: key.id, name: key.name, createdAt: key.createdAt, lastUsedAt: '' }, token, mcp: publicSettings(next).mcp });
+});
+
+app.delete('/api/mcp/keys/:id', requireTrustedOrigin, auth, requirePermission('admin'), async (req, res) => {
+  const settings = await loadSettings();
+  const keys = normalizeSettings(settings).mcpKeys;
+  const nextKeys = keys.filter((key) => key.id !== req.params.id);
+  if (nextKeys.length === keys.length) return res.status(404).json({ error: 'MCP key not found.' });
+  const next = { ...settings, mcpKeys: nextKeys };
+  await saveSettings(next);
+  res.json({ mcp: publicSettings(next).mcp });
 });
 
 app.post('/api/settings/test-api', requireTrustedOrigin, auth, requirePermission('edit'), requireRateLimit('test-api', 20, 60 * 1000), async (req, res) => {
@@ -2575,6 +2978,7 @@ app.get('/api/app/update-status', auth, requirePermission('view'), async (_req, 
 
 if (process.env.NODE_ENV === 'production') {
   const dist = path.join(ROOT, 'dist');
+  app.use('/vendor/monaco', express.static(path.join(ROOT, 'node_modules', 'monaco-editor', 'min')));
   app.use(express.static(dist, {
     index: false,
     setHeaders(res, filePath) {
@@ -2597,6 +3001,12 @@ if (process.env.NODE_ENV === 'production') {
 
 loadSettings().catch(() => {});
 
-app.listen(PORT, () => {
-  console.log(`CaddyUI API listening on :${PORT}`);
-});
+const isRunningUnderVitest = process.env.VITEST === 'true' || Boolean(import.meta.vitest);
+
+export { caddyPathPart, checkProxyHealth, parseCaddyAccessLog, parsePrometheusMetrics, probeTarget, tcpCheck };
+
+if (!isRunningUnderVitest) {
+  app.listen(PORT, () => {
+    console.log(`CaddyUI API listening on :${PORT}`);
+  });
+}

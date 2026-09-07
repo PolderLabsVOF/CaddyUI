@@ -1,12 +1,19 @@
 name: Nightly dev build
 
 on:
+  push:
+    branches:
+      - dev
   schedule:
     - cron: '17 2 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: nightly-dev-build
+  cancel-in-progress: false
 
 jobs:
   nightly:

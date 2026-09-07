@@ -1,6 +1,7 @@
 {
   "name": "caddy-ui",
-  "version": "0.2.27-beta",
+  "version": "0.2.28-beta",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,30 +11,42 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "start": "NODE_ENV=production node server/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@monaco-editor/react": "4.7.0",
     "@vitejs/plugin-react": "6.0.1",
     "bcryptjs": "3.0.3",
     "cookie-parser": "1.4.7",
     "cors": "2.8.6",
     "express": "5.2.1",
+    "gsap": "^3.14.2",
     "jsonwebtoken": "9.0.3",
     "lucide-react": "1.14.0",
+    "monaco-editor": "0.56.0",
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "sqlite": "^5.1.1",
     "sqlite3": "^6.0.1",
-    "vite": "8.0.10"
+    "vite": "8.2.2",
+    "zod": "4.5.4"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "concurrently": "9.2.1",
-    "typescript": "6.0.3"
+    "happy-dom": "^15.0.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
   },
   "overrides": {
     "dompurify": "^3.4.2"
+  },
+  "allowScripts": {
+    "sqlite3": true
   }
 }

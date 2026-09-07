@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Save, Trash2, UserPlus, UsersRound } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Download, GitFork, Info, KeyRound, Palette, PlugZap, Save, ShieldCheck, Trash2, TriangleAlert, UserPlus, UsersRound } from 'lucide-react';
 import { Notice, TypedConfirmModal } from '../components/common.jsx';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
 const sectionItems = [
-  ['connection', 'Connection'],
-  ['ai', 'AI assistant'],
-  ['security', 'Security'],
-  ['appearance', 'Appearance'],
-  ['account', 'Account'],
-  ['users', 'Users'],
-  ['updates', 'Updates'],
-  ['danger', 'Danger'],
+  ['connection', 'Connection', PlugZap],
+  ['ai', 'AI assistant', Bot],
+  ['mcp', 'MCP access', KeyRound],
+  ['security', 'Security', ShieldCheck],
+  ['appearance', 'Appearance', Palette],
+  ['account', 'Account', KeyRound],
+  ['users', 'Users', UsersRound],
+  ['updates', 'Updates', Download],
+  ['about', 'About', Info],
+  ['danger', 'Danger', TriangleAlert],
 ];
 
 const accentOptions = [
@@ -33,8 +35,6 @@ function parseScopeText(value = '') {
 export default function SettingsPage({ settings, setSettings, canEdit, canAdmin, api, notify, refreshConfig, setStatus, theme, setTheme, accent, setAccent }) {
   const [activeSection, setActiveSection] = useState('connection');
   const [form, setForm] = useState({
-    configMode: settings.configMode || 'api',
-    caddyfilePath: settings.caddyfilePath || '',
     caddyApiUrl: settings.caddyApiUrl || 'http://127.0.0.1:2019',
     caddyApiToken: '',
     aiEnabled: Boolean(settings.aiEnabled),
@@ -66,6 +66,10 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [dangerModal, setDangerModal] = useState({ open: false, kind: '', value: '' });
   const [dangerBusy, setDangerBusy] = useState(false);
+  const [mcpKeys, setMcpKeys] = useState(settings.mcp?.keys || []);
+  const [mcpKeyName, setMcpKeyName] = useState('');
+  const [createdMcpKey, setCreatedMcpKey] = useState('');
+  const [mcpBusy, setMcpBusy] = useState(false);
   const configuredLogCount = form.logPaths
     .split('\n')
     .map((x) => x.trim())
@@ -73,8 +77,6 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
 
   useEffect(() => {
     setForm({
-      configMode: settings.configMode || 'api',
-      caddyfilePath: settings.caddyfilePath || '',
       caddyApiUrl: settings.caddyApiUrl || 'http://127.0.0.1:2019',
       caddyApiToken: '',
       aiEnabled: Boolean(settings.aiEnabled),
@@ -91,17 +93,31 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     });
     setClearCaddyApiSecret(false);
     setClearAiApiKey(false);
-  }, [settings.configMode, settings.caddyfilePath, settings.caddyApiUrl, settings.aiEnabled, settings.aiProvider, settings.aiBaseUrl, settings.aiModel, settings.aiAllowPrivateBaseUrl, settings.logPaths, settings.trustProxyHops, settings.allowRemoteSetup, settings.secureCookieMode, settings.allowedOrigins]);
+  }, [settings.caddyApiUrl, settings.aiEnabled, settings.aiProvider, settings.aiBaseUrl, settings.aiModel, settings.aiAllowPrivateBaseUrl, settings.logPaths, settings.trustProxyHops, settings.allowRemoteSetup, settings.secureCookieMode, settings.allowedOrigins]);
 
   useEffect(() => {
     setUpdateChannel(settings.updateChannel || 'stable');
   }, [settings.updateChannel]);
 
   useEffect(() => {
+    setMcpKeys(settings.mcp?.keys || []);
+  }, [settings.mcp?.keys]);
+
+  const loadMcpKeys = async () => {
+    if (!canAdmin || localTest) return;
+    const result = await api('/api/mcp/keys');
+    setMcpKeys(result.mcp?.keys || []);
+  };
+
+  useEffect(() => {
     if (!canAdmin || localTest) return;
     api('/api/users')
       .then((res) => setUsers(res.users))
       .catch(() => {});
+  }, [canAdmin]);
+
+  useEffect(() => {
+    loadMcpKeys().catch(() => {});
   }, [canAdmin]);
 
   useEffect(() => {
@@ -157,8 +173,7 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     if (localTest) {
       setSettings({
         ...settings,
-        configMode: form.configMode || 'api',
-        caddyfilePath: form.caddyfilePath,
+        configMode: 'api',
         caddyApiUrl: form.caddyApiUrl,
         aiEnabled: Boolean(form.aiEnabled),
         aiProvider: form.aiProvider,
@@ -180,8 +195,6 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
 
     try {
       const payload = {
-        configMode: form.configMode || 'api',
-        caddyfilePath: form.caddyfilePath,
         caddyApiUrl: form.caddyApiUrl,
         logPaths: nextLogPaths,
       };
@@ -227,6 +240,46 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     } finally {
       setTestingAi(false);
     }
+  };
+
+  const setMcpEnabled = async (enabled) => {
+    if (!canAdmin) return;
+    setMcpBusy(true);
+    setMsg('');
+    try {
+      const result = await api('/api/settings', { method: 'POST', body: JSON.stringify({ mcpEnabled: enabled }) });
+      setSettings(result.settings);
+      setNotice(enabled ? 'MCP endpoint enabled.' : 'MCP endpoint disabled.');
+    } catch (err) { setMsg(err.message); } finally { setMcpBusy(false); }
+  };
+
+  const createMcpKey = async (event) => {
+    event.preventDefault();
+    if (!canAdmin || !mcpKeyName.trim()) return;
+    setMcpBusy(true); setMsg(''); setCreatedMcpKey('');
+    try {
+      const result = await api('/api/mcp/keys', { method: 'POST', body: JSON.stringify({ name: mcpKeyName.trim() }) });
+      setMcpKeys(result.mcp?.keys || []);
+      setSettings({ ...settings, mcp: result.mcp });
+      setCreatedMcpKey(result.token);
+      setMcpKeyName('');
+      setNotice('MCP key created. Copy it now; it cannot be shown again.');
+    } catch (err) { setMsg(err.message); } finally { setMcpBusy(false); }
+  };
+
+  const revokeMcpKey = async (id) => {
+    if (!canAdmin) return;
+    setMcpBusy(true); setMsg('');
+    try {
+      const result = await api(`/api/mcp/keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setMcpKeys(result.mcp?.keys || []);
+      setSettings({ ...settings, mcp: result.mcp });
+      setNotice('MCP key revoked.');
+    } catch (err) { setMsg(err.message); } finally { setMcpBusy(false); }
+  };
+
+  const copyMcpKey = async () => {
+    try { await navigator.clipboard.writeText(createdMcpKey); setNotice('MCP key copied.'); } catch { setMsg('Clipboard copy failed.'); }
   };
 
   const testApiUrl = async () => {
@@ -391,17 +444,17 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
   const openDangerModal = (kind) => setDangerModal({ open: true, kind, value: '' });
 
   return (
-    <section>
+    <section className="settings-page">
       <div className="settings-page-head">
-        <h2>Settings</h2>
-        <p>Connection, security, users, updates, and recovery tools.</p>
+        <p className="eyebrow">Control plane preferences</p>
+        <h1>Settings</h1>
+        <p>Configure how CaddyUI connects, protects access, assists operators, and receives updates.</p>
       </div>
 
       <div className="settings-overview">
         <div><span>Role</span><b>{settings.role || 'view'}</b></div>
-        <div><span>Mode</span><b>{settings.configMode || 'api'}</b></div>
+        <div><span>Mode</span><b>Admin API</b></div>
         <div><span>Caddy API URL</span><b>{settings.caddyApiUrl || 'not set'}</b></div>
-        <div><span>Caddyfile</span><b>{settings.caddyfilePath || 'not set'}</b></div>
         <div><span>API secret</span><b>{(settings.hasCaddyApiSecret || settings.hasCaddyApiToken) ? 'configured' : 'not set'}</b></div>
         <div><span>Log paths</span><b>{configuredLogCount}</b></div>
         <div><span>Trusted proxy hops</span><b>{settings.trustProxyHops ?? 0}</b></div>
@@ -410,9 +463,9 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
 
       <div className="settings-layout">
         <aside className="settings-subnav">
-          {sectionItems.map(([id, label]) => (
+          {sectionItems.map(([id, label, Icon]) => (
             <button key={id} type="button" className={activeSection === id ? 'active' : ''} onClick={() => setActiveSection(id)}>
-              {label}
+              <Icon size={17} /><span>{label}</span>
             </button>
           ))}
         </aside>
@@ -424,30 +477,7 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
             <form className="settings-form settings-card-grid" onSubmit={save}>
               <div className="settings-section-head">
                 <h3>Connection</h3>
-                <p>API mode is the default. File mode stays available when you want direct Caddyfile writes.</p>
-              </div>
-              <div className="settings-card">
-                <h4>Config source</h4>
-                <label>
-                  Config mode
-                  <select value={form.configMode} onChange={(e) => setForm({ ...form, configMode: e.target.value })} disabled={!canEdit}>
-                    <option value="api">api</option>
-                    <option value="file">file</option>
-                  </select>
-                </label>
-                <label>
-                  Caddyfile path
-                  <input value={form.caddyfilePath} onChange={(e) => setForm({ ...form, caddyfilePath: e.target.value })} readOnly={!canEdit || form.configMode === 'api'} />
-                </label>
-                <div className="toolbar">
-                  <button type="button" onClick={scanFiles} disabled={scanning}>{scanning ? 'Scanning...' : 'Scan Caddyfiles'}</button>
-                  {discovered.caddyfiles.length > 0 && (
-                    <select value="" onChange={(e) => e.target.value && setForm({ ...form, caddyfilePath: e.target.value })}>
-                      <option value="">Select discovered Caddyfile</option>
-                      {discovered.caddyfiles.map((f) => <option key={f.path} value={f.path}>{f.path}</option>)}
-                    </select>
-                  )}
-                </div>
+                <p>CaddyUI reads and applies configuration through Caddy's Admin API.</p>
               </div>
 
               <div className="settings-card">
@@ -534,6 +564,30 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
                 </div>
               )}
             </form>
+          )}
+
+          {activeSection === 'mcp' && canAdmin && (
+            <div className="settings-form settings-card-grid mcp-settings">
+              <div className="settings-section-head"><div><h3>Remote MCP access</h3><p>Give agents a dedicated bearer key for {`${window.location.origin}/api/mcp`}. Keys can manage CaddyUI, so keep them in your agent secret store.</p></div></div>
+              <div className="settings-card settings-card-wide">
+                <label className="settings-toggle"><input type="checkbox" checked={Boolean(settings.mcp?.enabled)} onChange={(event) => setMcpEnabled(event.target.checked)} disabled={mcpBusy} />Enable the remote MCP endpoint</label>
+                <p className="settings-help">Endpoint: <code>{`${window.location.origin}/api/mcp`}</code></p>
+                {settings.mcp?.environmentKeyConfigured && <p className="settings-help">An environment MCP token is also active. Manage or remove it from the service environment.</p>}
+              </div>
+              <form className="settings-card" onSubmit={createMcpKey}>
+                <h4>Create API key</h4>
+                <label>Key name<input value={mcpKeyName} onChange={(event) => setMcpKeyName(event.target.value)} placeholder="Production agent" maxLength="80" /></label>
+                <button className="primary" disabled={mcpBusy || !mcpKeyName.trim()}>Create key</button>
+                {createdMcpKey && <div className="mcp-created-key"><strong>Copy this key now</strong><code>{createdMcpKey}</code><button type="button" onClick={copyMcpKey}>Copy key</button></div>}
+              </form>
+              <div className="settings-card">
+                <h4>Active API keys</h4>
+                <div className="mcp-key-list">
+                  {mcpKeys.map((key) => <div className="mcp-key-row" key={key.id}><div><strong>{key.name}</strong><small>Created {new Date(key.createdAt).toLocaleString()} · {key.lastUsedAt ? `last used ${new Date(key.lastUsedAt).toLocaleString()}` : 'never used'}</small></div><button type="button" className="danger" onClick={() => revokeMcpKey(key.id)} disabled={mcpBusy}>Revoke</button></div>)}
+                  {!mcpKeys.length && <p className="settings-help">No UI-managed keys yet.</p>}
+                </div>
+              </div>
+            </div>
           )}
 
           {activeSection === 'security' && (
@@ -812,6 +866,26 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
                 <button className="primary">Save update channel</button>
               </div>
             </form>
+          )}
+
+          {activeSection === 'about' && (
+            <div className="settings-form settings-card-grid settings-about">
+              <div className="settings-section-head">
+                <h3>About CaddyUI</h3>
+                <p>Project information, source, and licensing.</p>
+              </div>
+              <div className="settings-card settings-card-wide settings-source-card">
+                <div>
+                  <span className="eyebrow">Open source control plane</span>
+                  <h4>CaddyUI</h4>
+                  <p>Licensed under GNU AGPL-3.0-only. Modified versions offered over a network must make their corresponding source available to their users.</p>
+                </div>
+                <a className="settings-source-link" href="https://github.com/PolderLabsVOF/CaddyUI" target="_blank" rel="noreferrer">
+                  <GitFork size={17} />
+                  View source code
+                </a>
+              </div>
+            </div>
           )}
 
           {activeSection === 'danger' && canAdmin && (

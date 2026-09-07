@@ -379,6 +379,17 @@ export async function createStateStore({ dataDir, dbPath, settingsPath, sessionP
       return row ? { id: row.id, title: row.title, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at) } : null;
     },
 
+    async nameAiConversation(id, username, title) {
+      const result = await db.run(
+        'UPDATE ai_conversations SET title = ? WHERE id = ? AND username = ? AND title = ?',
+        String(title),
+        String(id),
+        String(username),
+        'New conversation'
+      );
+      return Number(result.changes || 0) > 0;
+    },
+
     async deleteAiConversation(id, username) {
       await db.run('DELETE FROM ai_pending_actions WHERE conversation_id = ? AND username = ?', String(id), String(username));
       await db.run('DELETE FROM ai_messages WHERE conversation_id = ? AND username = ?', String(id), String(username));
