@@ -8,11 +8,13 @@ import {
   ChevronDown,
   ChevronRight,
   Clock3,
+  Copy,
   Gauge,
   Globe2,
   Loader2,
   Pencil,
   RefreshCw,
+  ShieldAlert,
   Server,
   ShieldCheck,
 } from 'lucide-react';
@@ -77,6 +79,10 @@ export default function CaddyRuntime({ api, canEdit, canAdmin, theme, notify }) 
   const [editorValue, setEditorValue] = useState('{}');
   const [editorDirty, setEditorDirty] = useState(false);
   const [treeSearch, setTreeSearch] = useState('');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [adminConnected, setAdminConnected] = useState(false);
+  const [failedOnly, setFailedOnly] = useState(false);
   const selectionRequest = useRef(0);
 
   const refresh = async () => {
@@ -92,10 +98,12 @@ export default function CaddyRuntime({ api, canEdit, canAdmin, theme, notify }) 
     if (configResult.status === 'fulfilled') {
       const nextConfig = configResult.value.value || {};
       setConfig(nextConfig);
+      setAdminConnected(true);
       setEtag(configResult.value.etag || '');
       if (selectedPath.length === 0) setSelectedEtag(configResult.value.etag || '');
       if (!editorDirty) setEditorValue(stringify(valueAtPath(nextConfig, selectedPath)));
     } else {
+      setAdminConnected(false);
       setError(configResult.reason?.message || 'Unable to load Caddy configuration.');
     }
     if (metricsResult.status === 'fulfilled') setMetrics(metricsResult.value);
@@ -103,10 +111,16 @@ export default function CaddyRuntime({ api, canEdit, canAdmin, theme, notify }) 
       const value = upstreamResult.value.value;
       setUpstreams(Array.isArray(value) ? value : Array.isArray(value?.upstreams) ? value.upstreams : []);
     }
+    setLastUpdated(new Date());
     setBusy(false);
   };
 
   useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    if (!autoRefresh || editorDirty) return undefined;
+    const timer = window.setInterval(refresh, 15_000);
+    return () => window.clearInterval(timer);
+  }, [autoRefresh, editorDirty]);
 
   const authorityIds = Object.keys(config?.apps?.pki?.certificate_authorities || {});
   useEffect(() => {
@@ -133,6 +147,8 @@ export default function CaddyRuntime({ api, canEdit, canAdmin, theme, notify }) 
   const ech = tls.encrypted_client_hello;
   const loggers = Object.keys(config?.logging?.logs || {});
   const clearUpstreams = upstreams.filter((item) => Number(item.fails || 0) === 0).length;
+  const failedUpstreams = upstreams.filter((item) => Number(item.fails || 0) > 0);
+  const visibleUpstreams = failedOnly ? failedUpstreams : upstreams;
   const features = [
     ['HTTP/3', Object.values(servers).some((server) => (server.protocols || ['h1', 'h2', 'h3']).includes('h3')), 'QUIC transport'],
     ['Encrypted ClientHello', Boolean(ech?.configs?.length), ech?.configs?.length ? `${ech.configs.length} public name${ech.configs.length === 1 ? '' : 's'}` : 'Not configured'],
@@ -234,6 +250,23 @@ export default function CaddyRuntime({ api, canEdit, canAdmin, theme, notify }) 
     URL.revokeObjectURL(href);
   };
 
+  const copyText = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      notify?.({ ok: true, level: 'success', message: `${label} copied.` });
+    } catch {
+      setError(`Unable to copy ${label.toLowerCase()}. Select it manually instead.`);
+    }
+  };
+
+  const formatEditor = () => {
+    try {
+      setEditorValue(stringify(JSON.parse(editorValue)));
+      setEditorDirty(true);
+      setError('');
+    } catch (formatError) { setError(`Invalid JSON: ${formatError.message}`); }
+  };
+
   const stopCaddy = async () => {
     if (!canAdmin || !window.confirm('Stop the Caddy process? Proxied services will become unavailable until Caddy is restarted.')) return;
     setBusy(true);
@@ -316,8 +349,8 @@ export default function CaddyRuntime({ api, canEdit, canAdmin, theme, notify }) 
 
   return <section className="runtime-page">
     <div className="section-head runtime-head">
-      <div><p className="eyebrow">Native Admin API</p><h1>Caddy runtime</h1><p>Inspect and control the complete live JSON configuration, including Caddy 2.11 server features and installed modules.</p></div>
-      <button onClick={refresh} disabled={busy}><RefreshCw size={16} className={busy ? 'spin' : ''} />Refresh live state</button>
+      <div><h1>Caddy runtime</h1><p>Inspect live state, manage server behavior, and make guarded JSON changes through Caddy’s Admin API.</p></div>
+      <div className="runtime-head-actions"><button className={autoRefresh ? 'active' : ''} onClick={() => setAutoRefresh((current) => !current)} aria-pressed={autoRefresh}>{autoRefresh ? 'Auto-refresh on' : 'Auto-refresh off'}</button><button onClick={refresh} disabled={busy}><RefreshCw size={16} className={busy ? 'spin' : ''} />Refresh now</button></div>
     </div>
     {error && <Notice type="error">{error}</Notice>}
 
@@ -328,6 +361,10 @@ export default function CaddyRuntime({ api, canEdit, canAdmin, theme, notify }) 
     {busy && !config && <div className="runtime-loading"><Loader2 className="spin" />Connecting to Caddy’s Admin API…</div>}
 
     {config && tab === 'overview' && <>
+      <section className="runtime-command-bar">
+        <div className="runtime-connection"><span className={`runtime-dot ${adminConnected ? 'on' : ''}`} /><div><strong>{adminConnected ? 'Admin API connected' : 'Admin API unavailable'}</strong><small>{lastUpdated ? `Last checked ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : 'Checking live state…'}{adminConnected && autoRefresh ? ' · refreshes every 15 seconds' : ''}</small></div></div>
+        <div className="runtime-command-actions"><button onClick={() => { setTab('json'); selectTreePath([]); }}><Braces size={15} />Open live JSON</button><button onClick={exportConfig}><Copy size={15} />Export snapshot</button></div>
+      </section>
       <div className="runtime-kpis">
         <Metric label="Loaded apps" value={apps.length} detail={apps.join(', ') || 'No apps'} />
         <Metric label="HTTP servers" value={Object.keys(servers).length} detail={`${Object.values(servers).reduce((sum, server) => sum + countRoutes(server), 0)} top-level routes`} />
@@ -335,16 +372,17 @@ export default function CaddyRuntime({ api, canEdit, canAdmin, theme, notify }) 
         <Metric label="Process uptime" value={durationSince(metrics?.summary?.processStartTime)} detail={`${metrics?.summary?.goroutines ?? '—'} goroutines`} />
       </div>
       <div className="runtime-grid">
-        <Panel title="Caddy 2.11 capabilities" subtitle="Detected in the live configuration">
+        <Panel title="Runtime capabilities" subtitle="Features detected in the live configuration">
           <div className="feature-list">{features.map(([name, enabled, detail]) => <div key={name}><span className={`runtime-dot ${enabled ? 'on' : ''}`} /><span><strong>{name}</strong><small>{detail}</small></span></div>)}</div>
         </Panel>
         <Panel title="Loaded app configuration" subtitle="Every configured app remains editable in the JSON API">
           <div className="module-cloud">{apps.map((name) => <button key={name} onClick={() => { setTab('json'); selectTreePath(['apps', name]); }}><Box size={14} />{name}</button>)}</div>
           {!apps.length && <p className="empty-state">No Caddy apps are loaded.</p>}
         </Panel>
-        <Panel title="Configuration safety" subtitle="Concurrent changes are protected">
+        <Panel title="Configuration safety" subtitle="Live edits are protected from concurrent changes">
           <dl className="runtime-details"><div><dt>Current ETag</dt><dd className="mono">{etag || 'Not returned'}</dd></div><div><dt>Persistence</dt><dd>Admin API + caddy --resume</dd></div><div><dt>Write behavior</dt><dd>Atomic live replacement</dd></div></dl>
-          <div className="runtime-actions"><button onClick={exportConfig}><Braces size={15} />Export live JSON</button><button className="danger" onClick={stopCaddy} disabled={!canAdmin || busy}>Stop Caddy</button></div>
+          <div className="runtime-actions"><button onClick={() => copyText(etag, 'ETag')} disabled={!etag}><Copy size={15} />Copy ETag</button><button onClick={() => { setTab('json'); selectTreePath([]); }}><Braces size={15} />Review full config</button></div>
+          <details className="runtime-danger-zone"><summary><ShieldAlert size={15} />Danger zone</summary><p>Stopping Caddy immediately makes proxied services unavailable until the process is restarted.</p><button className="danger" onClick={stopCaddy} disabled={!canAdmin || busy}>Stop Caddy</button></details>
         </Panel>
       </div>
     </>}
@@ -391,8 +429,10 @@ export default function CaddyRuntime({ api, canEdit, canAdmin, theme, notify }) 
         {metrics?.raw && <details className="raw-metrics"><summary>Raw Prometheus output</summary><pre>{metrics.raw}</pre></details>}
       </Panel>
       <Panel title="Reverse proxy upstreams" subtitle="Live passive health and request counters">
-        <div className="upstream-table">{upstreams.map((upstream, index) => <div key={`${upstream.address || upstream.dial || 'upstream'}-${index}`}><span className={`runtime-dot ${Number(upstream.fails || 0) === 0 ? 'on' : ''}`} /><strong>{upstream.address || upstream.dial || 'Unnamed upstream'}</strong><span>{upstream.num_requests ?? upstream.requests ?? 0} active</span><span>{upstream.fails ?? 0} recorded failures</span></div>)}</div>
+        <div className="upstream-toolbar"><span>{failedUpstreams.length ? `${failedUpstreams.length} upstream${failedUpstreams.length === 1 ? '' : 's'} need attention` : 'All reported upstreams are clear'}</span><button className={failedOnly ? 'active' : ''} onClick={() => setFailedOnly((current) => !current)} aria-pressed={failedOnly}>{failedOnly ? 'Show all' : 'Show failures'}</button></div>
+        <div className="upstream-table">{visibleUpstreams.map((upstream, index) => <div key={`${upstream.address || upstream.dial || 'upstream'}-${index}`}><span className={`runtime-dot ${Number(upstream.fails || 0) === 0 ? 'on' : ''}`} /><strong>{upstream.address || upstream.dial || 'Unnamed upstream'}</strong><span>{upstream.num_requests ?? upstream.requests ?? 0} active</span><span>{upstream.fails ?? 0} recorded failures</span></div>)}</div>
         {!upstreams.length && <p className="empty-state">No runtime upstreams were returned.</p>}
+        {upstreams.length > 0 && !visibleUpstreams.length && <p className="empty-state">No upstreams with recorded failures.</p>}
       </Panel>
       <Panel title="Logging configuration" subtitle="Structured loggers and sinks">
         <div className="module-cloud">{loggers.map((name) => <button key={name} onClick={() => { setTab('json'); selectTreePath(['logging', 'logs', name]); }}>{name}</button>)}</div>
@@ -408,8 +448,9 @@ export default function CaddyRuntime({ api, canEdit, canAdmin, theme, notify }) 
       </aside>
       <section className="json-editor-panel">
         <div className="json-editor-head"><div className="json-path-control"><p className="eyebrow">Selected API path</p><label><span>/config/</span><input aria-label="Caddy API path" value={pathInput} onChange={(event) => setManualPath(event.target.value)} placeholder="apps/http/servers/srv0" /><button type="button" onClick={() => selectTreePath(selectedPath)} disabled={busy || pathResolved}>Load</button></label></div><div><select aria-label="Write operation" value={selectedPath.length ? writeMethod : 'PATCH'} disabled={!selectedPath.length || !pathResolved} onChange={(event) => setWriteMethod(event.target.value)}><option value="PATCH">Replace</option><option value="POST">Create / append</option><option value="PUT">Insert</option></select><button onClick={() => selectTreePath(selectedPath)} disabled={!editorDirty}>Discard</button><button className="danger" onClick={deleteJsonPath} disabled={!canEdit || busy || !selectedPath.length || !pathResolved || !selectedEtag}>Delete</button><button className="primary" onClick={saveJsonPath} disabled={!canEdit || busy || !pathResolved || !editorDirty}>{busy ? <Loader2 size={15} className="spin" /> : <CheckCircle2 size={15} />}Save selected path</button></div></div>
+        <div className="json-editor-tools"><button type="button" onClick={formatEditor} disabled={!editorDirty}>Format JSON</button><button type="button" onClick={() => copyText(editorValue, 'Selected JSON')}><Copy size={14} />Copy value</button><span>{editorDirty ? 'Unsaved changes' : 'No unsaved changes'}</span></div>
         <div className="json-editor-wrap"><Editor height="560px" language="json" theme={theme === 'light' ? 'light' : 'vs-dark'} value={editorValue} onChange={(value) => { setEditorValue(value || ''); setEditorDirty(true); }} options={{ minimap: { enabled: false }, fontSize: 13, formatOnPaste: true, tabSize: 2, scrollBeyondLastLine: false, wordWrap: 'on' }} /></div>
-        <p className="json-help">Replace updates an existing value, Create adds a key or appends to an array, and Insert writes before an array index. Writes are atomic; tree selections are fetched first so their path-specific ETags prevent overwriting concurrent changes.</p>
+        <p className="json-help">Replace updates an existing value. Create adds a key or appends to an array. Insert writes before an array index. Format and copy are local-only; Save selected path applies the change live.</p>
       </section>
     </div>}
 

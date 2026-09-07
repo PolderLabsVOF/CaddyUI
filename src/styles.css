@@ -922,6 +922,13 @@ label {
   margin-bottom: 16px;
 }
 
+.middleware-page { max-width: 1500px; }
+.middleware-page-head { margin-bottom: 2px; }
+.middleware-create-cta { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.middleware-create-cta h3 { margin: 0 0 5px; font-size: 16px; }
+.middleware-create-cta p { max-width: 680px; margin: 0; font-size: 13px; line-height: 1.45; }
+.middleware-create-cta button { flex: none; }
+
 .middleware-builder {
   padding: 14px;
   display: grid;
@@ -1047,6 +1054,7 @@ label {
 .middleware-searchbar select {
   max-width: 180px;
 }
+.middleware-clear-filters { min-height: 36px; padding: 7px 10px; font-size: 12px; }
 
 .middleware-results {
   display: flex;
@@ -2140,6 +2148,9 @@ label {
     max-width: none;
   }
 
+  .middleware-create-cta { align-items: flex-start; flex-direction: column; }
+  .middleware-create-cta button { width: 100%; }
+
   .middleware-meta-grid {
     grid-template-columns: 1fr;
   }
@@ -2578,6 +2589,13 @@ p { text-wrap: pretty; }
 .runtime-page { display: grid; gap: 16px; }
 .runtime-head { margin-bottom: 0; }
 .runtime-head p:not(.eyebrow) { max-width: 720px; }
+.runtime-head h1 { margin-bottom: 7px; font-size: clamp(28px, 3vw, 40px); letter-spacing: -.025em; }
+.runtime-head-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.runtime-head-actions button.active, .upstream-toolbar button.active { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: color-mix(in srgb, var(--ok) 10%, var(--surface)); color: var(--text); }
+.runtime-command-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.runtime-connection { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.runtime-connection > div { display: grid; gap: 3px; }.runtime-connection small { color: var(--muted); font-size: 12px; }
+.runtime-command-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .runtime-tabs { display: flex; gap: 7px; overflow-x: auto; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); scrollbar-width: none; }
 .runtime-tabs::-webkit-scrollbar { display: none; }
 .runtime-tabs button { flex: 0 0 auto; border-color: transparent; background: transparent; color: var(--muted); white-space: nowrap; }
@@ -2607,6 +2625,9 @@ p { text-wrap: pretty; }
 .runtime-details dt { color: var(--muted); font-size: 12px; }
 .runtime-details dd { margin: 0; overflow-wrap: anywhere; text-align: right; font-size: 12px; }
 .runtime-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.runtime-danger-zone { margin-top: 15px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--bad) 30%, var(--line)); }
+.runtime-danger-zone summary { display: flex; align-items: center; gap: 7px; color: var(--bad); cursor: pointer; font-size: 12px; font-weight: 700; }
+.runtime-danger-zone p { margin: 9px 0; font-size: 12px; line-height: 1.45; }
 .server-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .http-app-summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .http-app-summary h2 { margin: 0; font-size: 16px; }
@@ -2633,6 +2654,8 @@ p { text-wrap: pretty; }
 .raw-metrics summary { padding: 12px 0 0; color: var(--muted); cursor: pointer; font-size: 12px; }
 .raw-metrics pre { max-height: 360px; overflow: auto; padding: 12px; border-radius: var(--radius); background: var(--input); font-size: 11px; white-space: pre; }
 .upstream-table { display: grid; }
+.upstream-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+.upstream-toolbar button { min-height: 31px; padding: 5px 8px; font-size: 11px; }
 .upstream-table > div { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--line); font-size: 11px; }
 .upstream-table strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .upstream-table span:not(.runtime-dot) { color: var(--muted); white-space: nowrap; }
@@ -2659,6 +2682,8 @@ p { text-wrap: pretty; }
 .json-path-control input { min-width: 0; flex: 1; border: 0; background: transparent; font: 11px 'Cascadia Code', Consolas, monospace; }
 .json-path-control label button { min-height: 30px; margin: 3px; padding: 4px 8px; }
 .json-editor-wrap { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); }
+.json-editor-tools { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.json-editor-tools button { min-height: 30px; padding: 5px 8px; font-size: 11px; }.json-editor-tools span { margin-left: auto; color: var(--muted); font-size: 11px; }
 .json-help { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .server-editor { width: min(760px, calc(100vw - 24px)); }
 .server-editor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-height: min(60vh, 570px); overflow-y: auto; padding: 2px; }
@@ -2702,6 +2727,8 @@ p { text-wrap: pretty; }
   .upstream-table > div span:last-child { display: none; }
   .http-app-summary { align-items: flex-start; flex-direction: column; }
   .http-app-actions { width: 100%; flex-wrap: wrap; }
+  .runtime-command-bar { align-items: flex-start; flex-direction: column; }
+  .runtime-command-actions { width: 100%; }.runtime-command-actions button { flex: 1; }
 }
 
 @media (max-width: 430px) {
@@ -2710,6 +2737,8 @@ p { text-wrap: pretty; }
   .runtime-metric > strong { font-size: 21px; }
   .runtime-tabs button { padding: 8px; }
   .runtime-tabs button svg { display: none; }
+  .runtime-head-actions { width: 100%; }.runtime-head-actions button { flex: 1; }
+  .upstream-toolbar { align-items: flex-start; flex-direction: column; }
 }
 
 /* Settings workspace */

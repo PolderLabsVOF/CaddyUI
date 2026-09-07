@@ -51,7 +51,7 @@ const api = async (path, options = {}) => {
 
 const canEditRole = (role) => role === 'edit' || role === 'admin';
 const canAdminRole = (role) => role === 'admin';
-const PAGE_IDS = new Set(['proxies', 'middlewares', 'caddy', 'tls', 'logs', 'settings']);
+const PAGE_IDS = new Set(['proxies', 'middlewares', 'caddy', 'tls', 'analytics', 'logs', 'settings']);
 const pageFromHash = () => {
   const candidate = window.location.hash.replace(/^#\/?/, '').trim();
   return PAGE_IDS.has(candidate) ? candidate : 'proxies';

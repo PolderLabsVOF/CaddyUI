@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { Copy, LayoutTemplate, Layers3, PencilLine, Plus, Search, Sparkles } from 'lucide-react';
 import { parseCaddyfile } from '../../server/caddyParser.js';
@@ -196,15 +196,22 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
   const [typeFilter, setTypeFilter] = useState('all');
   const [usageFilter, setUsageFilter] = useState('all');
   const [scopeFilter, setScopeFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('usage');
+  const [creatorOpen, setCreatorOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const creatorNameRef = useRef(null);
 
   const query = search.trim().toLowerCase();
-  const filteredSnippets = useMemo(
-    () => snippets.filter((snippet) => filterSnippet(snippet, query, typeFilter, usageFilter, scopeFilter)),
-    [snippets, query, typeFilter, usageFilter, scopeFilter]
-  );
+  const filteredSnippets = useMemo(() => {
+    const items = snippets.filter((snippet) => filterSnippet(snippet, query, typeFilter, usageFilter, scopeFilter));
+    return items.sort((left, right) => {
+      if (sortBy === 'name') return String(left.name).localeCompare(String(right.name));
+      if (sortBy === 'type') return String(left.inferredType || 'snippet').localeCompare(String(right.inferredType || 'snippet'));
+      return (right.usedBy?.length || 0) - (left.usedBy?.length || 0) || String(left.name).localeCompare(String(right.name));
+    });
+  }, [snippets, query, typeFilter, usageFilter, scopeFilter, sortBy]);
 
   const summary = useMemo(() => {
     const used = snippets.filter((snippet) => (snippet.usedBy?.length || 0) > 0).length;
@@ -244,6 +251,19 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       name: form.name.trim() ? form.name : template.name,
       body: normalizeEditorBody(template.body),
     });
+  };
+
+  const openCreator = () => {
+    setCreatorOpen(true);
+    window.requestAnimationFrame(() => creatorNameRef.current?.focus());
+  };
+
+  const clearFilters = () => {
+    setSearch('');
+    setTypeFilter('all');
+    setUsageFilter('all');
+    setScopeFilter('all');
+    setSortBy('usage');
   };
 
   const appendHelperToForm = (helper) => {
@@ -380,12 +400,13 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
   };
 
   return (
-    <section>
-      <div className="section-head">
+    <section className="middleware-page">
+      <div className="section-head middleware-page-head">
         <div>
           <h2>Middlewares</h2>
-          <p>Build, search, duplicate, and maintain snippet libraries without dropping straight into raw config every time.</p>
+          <p>Reusable Caddyfile building blocks, with clear usage and fast paths to create, inspect, and reuse each one.</p>
         </div>
+        {canEdit && <button className="primary" type="button" onClick={openCreator}><Plus size={16} />New middleware</button>}
       </div>
 
       {message && <Notice type="success">{message}</Notice>}
@@ -398,7 +419,14 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
         <div><b>{summary.auth}</b><span>Auth snippets</span></div>
       </div>
 
-      {canEdit && (
+      {canEdit && !creatorOpen && (
+        <section className="middleware-create-cta">
+          <div><h3>Create a reusable building block</h3><p>Start from a proven template or write the directives you need. The preview always shows the exact snippet that will be saved.</p></div>
+          <button type="button" onClick={openCreator}><Plus size={16} />Create middleware</button>
+        </section>
+      )}
+
+      {canEdit && creatorOpen && (
         <div className="middleware-workbench">
           <form className="middleware-builder" onSubmit={add}>
             <div className="middleware-builder-main">
@@ -415,6 +443,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
               <label>
                 Name
                 <input
+                  ref={creatorNameRef}
                   placeholder="security_headers"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -426,6 +455,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
                   Normalize indentation
                 </button>
                 <button type="button" onClick={() => setForm({ name: '', body: '' })}>Clear draft</button>
+                <button type="button" onClick={() => setCreatorOpen(false)}>Close creator</button>
               </div>
               <div className="middleware-editor middleware-editor-large">
                 <Editor
@@ -493,27 +523,29 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
           <Search size={16} />
           <input placeholder="Search by name, directive, usage, or body" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+        <select aria-label="Filter by middleware type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="all">All types</option>
           <option value="snippet">snippet</option>
           <option value="headers">headers</option>
           <option value="auth">auth</option>
           <option value="tls">tls</option>
         </select>
-        <select value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value)}>
+        <select aria-label="Filter by middleware scope" value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value)}>
           <option value="all">All scopes</option>
           <option value="site">site</option>
           <option value="proxy">proxy</option>
         </select>
-        <select value={usageFilter} onChange={(e) => setUsageFilter(e.target.value)}>
+        <select aria-label="Filter by middleware usage" value={usageFilter} onChange={(e) => setUsageFilter(e.target.value)}>
           <option value="all">All usage</option>
           <option value="used">In use</option>
           <option value="unused">Unused</option>
         </select>
+        <select aria-label="Sort middlewares" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="usage">Most used</option><option value="name">Name</option><option value="type">Type</option></select>
+        {(search || typeFilter !== 'all' || scopeFilter !== 'all' || usageFilter !== 'all' || sortBy !== 'usage') && <button type="button" className="middleware-clear-filters" onClick={clearFilters}>Clear filters</button>}
       </div>
 
       <div className="middleware-results">
-        <span>{filteredSnippets.length} shown</span>
+        <span>{filteredSnippets.length} shown · sorted by {sortBy === 'usage' ? 'usage' : sortBy}</span>
         <span>{summary.total} total</span>
         <span>{summary.unused} unused</span>
       </div>
