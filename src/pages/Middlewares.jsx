@@ -155,6 +155,7 @@ function buildDraftFromSnippet(snippet) {
     inferredType: snippet.inferredType,
     usedBy: snippet.usedBy || [],
     scope: snippetScope(snippet),
+    tab: 'compose',
   };
 }
 
@@ -639,7 +640,9 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
               </div>
               <button type="button" onClick={() => setEdit(null)}>Close</button>
             </div>
+            <div className="config-mode-tabs" role="tablist" aria-label="Middleware configuration"><button type="button" role="tab" aria-selected={edit.tab === 'compose'} className={edit.tab === 'compose' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'compose' }))}>Compose</button><button type="button" role="tab" aria-selected={edit.tab === 'reuse'} className={edit.tab === 'reuse' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'reuse' }))}>Reuse & actions</button><button type="button" role="tab" aria-selected={edit.tab === 'preview'} className={edit.tab === 'preview' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'preview' }))}>Caddyfile preview</button></div>
             <div className="middleware-edit-layout">
+              {edit.tab === 'reuse' &&
               <div className="proxy-edit-card">
                 <h4>Identity and reuse</h4>
                 <label>
@@ -670,7 +673,9 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
                 </div>
                 <div className="middleware-dialog-actions"><button type="button" onClick={() => copyImportStatement(edit)}><Copy size={14} />Copy import</button><button type="button" onClick={() => duplicateSnippet(edit)}><Layers3 size={14} />Duplicate</button>{canEdit && <button type="button" className="danger" onClick={(event) => setConfirmDelete(deleteConfirm(event, 'Delete middleware', edit.name, () => deleteMiddleware(edit)))}>Delete</button>}</div>
               </div>
+              }
 
+              {edit.tab === 'compose' &&
               <div className="proxy-edit-card">
                 <h4>Body</h4>
                 <div className="middleware-editor-toolbar toolbar">
@@ -693,12 +698,15 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
                   />
                 </div>
               </div>
+              }
 
+              {edit.tab === 'preview' &&
               <div className="proxy-edit-card middleware-preview-card">
                 <h4>Complete Caddyfile block</h4>
                 <pre>{snippetPreview(edit.name, edit.body)}</pre>
                 <p className="middleware-preview-help">The body editor accepts any valid snippet directives, not only the starter templates.</p>
               </div>
+              }
             </div>
             <div className="toolbar">
               <button className="primary" disabled={busy}>Save</button>

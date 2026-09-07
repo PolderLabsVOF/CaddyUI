@@ -34,7 +34,6 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
           </button>
           <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
           <span className="logo">Caddy<span>UI</span></span>
-          <span className="app-version">v{shownVersion}</span>
         </div>
         <div className="top-actions desktop-actions">
           {canEdit && (

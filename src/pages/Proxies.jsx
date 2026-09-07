@@ -347,6 +347,7 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
       logMode: logging.mode,
       logPath: logging.path,
       disabled: Boolean(site.disabled),
+      tab: 'overview',
       rawOpen: false,
       rawBlock: readBlockAtLine(config.content, site.line),
     });
@@ -492,8 +493,9 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
               <div><h3>Edit proxy</h3><p>{edit.disabled ? 'Disabled. Enable it before traffic can reach this upstream.' : 'Changes apply to this proxy’s generated Caddyfile block.'}</p></div>
               <button type="button" onClick={() => setEdit(null)}>Close</button>
             </div>
-            <div className="config-mode-tabs" role="tablist" aria-label="Proxy configuration mode"><button type="button" role="tab" aria-selected={!edit.rawOpen} className={!edit.rawOpen ? 'active' : ''} onClick={() => { const generated = previewProxyBlock(config.content, edit); if (!edit.rawOpen || edit.rawBlock === generated || window.confirm('Discard unsaved Advanced Caddyfile edits and return to Details?')) setEdit((current) => ({ ...current, rawOpen: false })); }}>Details</button><button type="button" role="tab" aria-selected={edit.rawOpen} className={edit.rawOpen ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, rawOpen: true, rawBlock: previewProxyBlock(config.content, current) }))}>Advanced Caddyfile</button></div>
-            {!edit.rawOpen ? <div className="proxy-edit-layout">
+            <div className="config-mode-tabs" role="tablist" aria-label="Proxy configuration"><button type="button" role="tab" aria-selected={edit.tab === 'overview'} className={edit.tab === 'overview' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'overview', rawOpen: false }))}>Overview</button><button type="button" role="tab" aria-selected={edit.tab === 'routing'} className={edit.tab === 'routing' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'routing', rawOpen: false }))}>Routing</button><button type="button" role="tab" aria-selected={edit.tab === 'operations'} className={edit.tab === 'operations' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'operations', rawOpen: false }))}>Operations</button><button type="button" role="tab" aria-selected={edit.tab === 'advanced'} className={edit.tab === 'advanced' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'advanced', rawOpen: true, rawBlock: previewProxyBlock(config.content, current) }))}>Caddyfile</button></div>
+            {edit.tab !== 'advanced' ? <div className="proxy-edit-layout">
+              {edit.tab === 'overview' &&
               <section className="proxy-edit-card">
                 <h4>Connection</h4>
                 <label>
@@ -509,6 +511,8 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
                   <textarea rows="3" value={edit.description} onChange={(e) => { const next = { ...edit, description: e.target.value }; if (next.rawOpen) next.rawBlock = previewProxyBlock(config.content, next); setEdit(next); }} placeholder="What this proxy is for" />
                 </label>
               </section>
+              }
+              {edit.tab === 'routing' &&
               <section className="proxy-edit-card">
                 <h4>Organization</h4>
                 <label>
@@ -541,6 +545,8 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
                   <MiddlewarePicker snippets={snippets} value={edit.imports} onChange={(imports) => { const next = { ...edit, imports }; if (next.rawOpen) next.rawBlock = previewProxyBlock(config.content, next); setEdit(next); }} />
                 </div>
               </section>
+              }
+              {edit.tab === 'operations' &&
               <section className="proxy-edit-card">
                 <h4>Logging</h4>
                 <label>
@@ -561,6 +567,7 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
                 )}
                 <label className="proxy-enabled-toggle"><input type="checkbox" checked={!edit.disabled} onChange={(event) => setEdit((current) => ({ ...current, disabled: !event.target.checked }))} />Enable this proxy</label>
               </section>
+              }
             </div> : (
               <section className="proxy-advanced-editor">
                 <div><h4>Full proxy block</h4><p>Use this mode for any Caddyfile directive not represented in Details. The entire block is validated before it is applied.</p></div>
