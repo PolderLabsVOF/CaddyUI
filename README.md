@@ -114,7 +114,9 @@ CaddyUI exposes its authenticated Caddy API bridge below `/api/caddy/*`, includi
 
 CaddyUI can expose a remote [Streamable HTTP MCP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) endpoint so an agent can manage the same Caddy configuration through `https://caddyui.example.com/api/mcp`.
 
-Set a dedicated, high-entropy bearer token in the CaddyUI service environment and restart the service. The endpoint remains disabled unless this variable is set; CaddyUI refuses tokens shorter than 32 characters.
+Open **Settings → MCP access** to enable the endpoint, create named keys, copy each key once, and revoke keys that are no longer needed. Generated keys are stored only as hashes.
+
+For unattended or break-glass access, you can additionally set a dedicated, high-entropy bearer token in the CaddyUI service environment and restart the service. CaddyUI refuses environment tokens shorter than 32 characters.
 
 ```ini
 # systemd override: sudo systemctl edit caddyui
@@ -138,7 +140,7 @@ Connect your remote MCP client to the public HTTPS URL and send the token as a b
 }
 ```
 
-The MCP endpoint has full CaddyUI administration capability: it can inspect logs and analytics, read and validate the working Caddyfile, apply/reload it, and call the native Caddy Admin API. Keep the token in your agent's secret store, use HTTPS, and rotate it by changing the environment variable and restarting CaddyUI.
+The MCP endpoint has full CaddyUI administration capability: it can inspect logs and analytics, read and validate the working Caddyfile, apply/reload it, and call the native Caddy Admin API. Keep every token in your agent's secret store, use HTTPS, and revoke or rotate keys immediately when access changes.
 
 ## A minimal route for CaddyUI
 

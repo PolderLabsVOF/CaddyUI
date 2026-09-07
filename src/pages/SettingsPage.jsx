@@ -6,6 +6,7 @@ const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST
 const sectionItems = [
   ['connection', 'Connection', PlugZap],
   ['ai', 'AI assistant', Bot],
+  ['mcp', 'MCP access', KeyRound],
   ['security', 'Security', ShieldCheck],
   ['appearance', 'Appearance', Palette],
   ['account', 'Account', KeyRound],
@@ -65,6 +66,10 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [dangerModal, setDangerModal] = useState({ open: false, kind: '', value: '' });
   const [dangerBusy, setDangerBusy] = useState(false);
+  const [mcpKeys, setMcpKeys] = useState(settings.mcp?.keys || []);
+  const [mcpKeyName, setMcpKeyName] = useState('');
+  const [createdMcpKey, setCreatedMcpKey] = useState('');
+  const [mcpBusy, setMcpBusy] = useState(false);
   const configuredLogCount = form.logPaths
     .split('\n')
     .map((x) => x.trim())
@@ -95,10 +100,24 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
   }, [settings.updateChannel]);
 
   useEffect(() => {
+    setMcpKeys(settings.mcp?.keys || []);
+  }, [settings.mcp?.keys]);
+
+  const loadMcpKeys = async () => {
+    if (!canAdmin || localTest) return;
+    const result = await api('/api/mcp/keys');
+    setMcpKeys(result.mcp?.keys || []);
+  };
+
+  useEffect(() => {
     if (!canAdmin || localTest) return;
     api('/api/users')
       .then((res) => setUsers(res.users))
       .catch(() => {});
+  }, [canAdmin]);
+
+  useEffect(() => {
+    loadMcpKeys().catch(() => {});
   }, [canAdmin]);
 
   useEffect(() => {
@@ -221,6 +240,46 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     } finally {
       setTestingAi(false);
     }
+  };
+
+  const setMcpEnabled = async (enabled) => {
+    if (!canAdmin) return;
+    setMcpBusy(true);
+    setMsg('');
+    try {
+      const result = await api('/api/settings', { method: 'POST', body: JSON.stringify({ mcpEnabled: enabled }) });
+      setSettings(result.settings);
+      setNotice(enabled ? 'MCP endpoint enabled.' : 'MCP endpoint disabled.');
+    } catch (err) { setMsg(err.message); } finally { setMcpBusy(false); }
+  };
+
+  const createMcpKey = async (event) => {
+    event.preventDefault();
+    if (!canAdmin || !mcpKeyName.trim()) return;
+    setMcpBusy(true); setMsg(''); setCreatedMcpKey('');
+    try {
+      const result = await api('/api/mcp/keys', { method: 'POST', body: JSON.stringify({ name: mcpKeyName.trim() }) });
+      setMcpKeys(result.mcp?.keys || []);
+      setSettings({ ...settings, mcp: result.mcp });
+      setCreatedMcpKey(result.token);
+      setMcpKeyName('');
+      setNotice('MCP key created. Copy it now; it cannot be shown again.');
+    } catch (err) { setMsg(err.message); } finally { setMcpBusy(false); }
+  };
+
+  const revokeMcpKey = async (id) => {
+    if (!canAdmin) return;
+    setMcpBusy(true); setMsg('');
+    try {
+      const result = await api(`/api/mcp/keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setMcpKeys(result.mcp?.keys || []);
+      setSettings({ ...settings, mcp: result.mcp });
+      setNotice('MCP key revoked.');
+    } catch (err) { setMsg(err.message); } finally { setMcpBusy(false); }
+  };
+
+  const copyMcpKey = async () => {
+    try { await navigator.clipboard.writeText(createdMcpKey); setNotice('MCP key copied.'); } catch { setMsg('Clipboard copy failed.'); }
   };
 
   const testApiUrl = async () => {
@@ -505,6 +564,30 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
                 </div>
               )}
             </form>
+          )}
+
+          {activeSection === 'mcp' && canAdmin && (
+            <div className="settings-form settings-card-grid mcp-settings">
+              <div className="settings-section-head"><div><h3>Remote MCP access</h3><p>Give agents a dedicated bearer key for {`${window.location.origin}/api/mcp`}. Keys can manage CaddyUI, so keep them in your agent secret store.</p></div></div>
+              <div className="settings-card settings-card-wide">
+                <label className="settings-toggle"><input type="checkbox" checked={Boolean(settings.mcp?.enabled)} onChange={(event) => setMcpEnabled(event.target.checked)} disabled={mcpBusy} />Enable the remote MCP endpoint</label>
+                <p className="settings-help">Endpoint: <code>{`${window.location.origin}/api/mcp`}</code></p>
+                {settings.mcp?.environmentKeyConfigured && <p className="settings-help">An environment MCP token is also active. Manage or remove it from the service environment.</p>}
+              </div>
+              <form className="settings-card" onSubmit={createMcpKey}>
+                <h4>Create API key</h4>
+                <label>Key name<input value={mcpKeyName} onChange={(event) => setMcpKeyName(event.target.value)} placeholder="Production agent" maxLength="80" /></label>
+                <button className="primary" disabled={mcpBusy || !mcpKeyName.trim()}>Create key</button>
+                {createdMcpKey && <div className="mcp-created-key"><strong>Copy this key now</strong><code>{createdMcpKey}</code><button type="button" onClick={copyMcpKey}>Copy key</button></div>}
+              </form>
+              <div className="settings-card">
+                <h4>Active API keys</h4>
+                <div className="mcp-key-list">
+                  {mcpKeys.map((key) => <div className="mcp-key-row" key={key.id}><div><strong>{key.name}</strong><small>Created {new Date(key.createdAt).toLocaleString()} · {key.lastUsedAt ? `last used ${new Date(key.lastUsedAt).toLocaleString()}` : 'never used'}</small></div><button type="button" className="danger" onClick={() => revokeMcpKey(key.id)} disabled={mcpBusy}>Revoke</button></div>)}
+                  {!mcpKeys.length && <p className="settings-help">No UI-managed keys yet.</p>}
+                </div>
+              </div>
+            </div>
           )}
 
           {activeSection === 'security' && (

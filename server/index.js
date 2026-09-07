@@ -8,7 +8,7 @@ import fssync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import net from 'node:net';
 import dns from 'node:dns/promises';
 import tls from 'node:tls';
@@ -395,6 +395,17 @@ function normalizeSettings(settings) {
     : base.user
       ? [normalizeUser(base.user, 'admin')]
       : [];
+  const mcpKeys = Array.isArray(base.mcpKeys)
+    ? base.mcpKeys
+        .map((key) => ({
+          id: String(key?.id || '').trim(),
+          name: String(key?.name || '').trim().slice(0, 80),
+          tokenHash: String(key?.tokenHash || '').trim(),
+          createdAt: String(key?.createdAt || ''),
+          lastUsedAt: String(key?.lastUsedAt || ''),
+        }))
+        .filter((key) => key.id && key.name && /^[a-f0-9]{64}$/i.test(key.tokenHash))
+    : [];
   return {
     configured: Boolean(base.configured),
     configMode: normalizeConfigMode(base.configMode, DEFAULT_CONFIG_MODE),
@@ -413,6 +424,8 @@ function normalizeSettings(settings) {
     allowRemoteSetup: normalizeBoolean(base.allowRemoteSetup, ENV_ALLOW_REMOTE_SETUP),
     secureCookieMode: normalizeCookieMode(base.secureCookieMode, ENV_SECURE_COOKIE_MODE),
     allowedOrigins: normalizeAllowedOrigins(base.allowedOrigins ?? ENV_ALLOWED_ORIGINS),
+    mcpEnabled: typeof base.mcpEnabled === 'boolean' ? base.mcpEnabled : Boolean(MCP_TOKEN),
+    mcpKeys,
     users,
   };
 }
@@ -509,6 +522,12 @@ function publicSettings(settings, currentUsername = '') {
     allowRemoteSetup: Boolean(normalized.allowRemoteSetup),
     secureCookieMode: normalized.secureCookieMode || 'auto',
     allowedOrigins: normalized.allowedOrigins || [],
+    mcp: {
+      enabled: Boolean(normalized.mcpEnabled),
+      endpoint: '/api/mcp',
+      environmentKeyConfigured: Boolean(MCP_TOKEN),
+      keys: normalized.mcpKeys.map(({ id, name, createdAt, lastUsedAt }) => ({ id, name, createdAt, lastUsedAt })),
+    },
     username: currentUser?.username || '',
     role: currentUser?.role || '',
   };
@@ -545,6 +564,12 @@ function statusSettings(settings, authenticated, currentUsername = '') {
     allowRemoteSetup: Boolean(normalized.allowRemoteSetup),
     secureCookieMode: normalized.secureCookieMode || 'auto',
     allowedOrigins: normalized.allowedOrigins || [],
+    mcp: {
+      enabled: Boolean(normalized.mcpEnabled),
+      endpoint: '/api/mcp',
+      environmentKeyConfigured: Boolean(MCP_TOKEN),
+      keys: normalized.mcpKeys.map(({ id, name, createdAt, lastUsedAt }) => ({ id, name, createdAt, lastUsedAt })),
+    },
   };
 }
 
@@ -1327,12 +1352,25 @@ function createMcpServer() {
   return server;
 }
 
-function requireMcpToken(req, res, next) {
-  if (!MCP_TOKEN) return res.status(404).json({ error: 'Not found' });
+function hashMcpToken(token) {
+  return createHash('sha256').update(String(token || ''), 'utf8').digest('hex');
+}
+
+async function requireMcpToken(req, res, next) {
+  const settings = await loadSettings();
+  const normalized = normalizeSettings(settings);
+  if (!normalized.mcpEnabled || (!MCP_TOKEN && normalized.mcpKeys.length === 0)) return res.status(404).json({ error: 'Not found' });
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-  if (!secureEqual(token, MCP_TOKEN)) {
+  const tokenHash = hashMcpToken(token);
+  const key = normalized.mcpKeys.find((item) => secureEqual(tokenHash, item.tokenHash));
+  if (!secureEqual(token, MCP_TOKEN) && !key) {
     res.setHeader('WWW-Authenticate', 'Bearer realm="CaddyUI MCP"');
     return res.status(401).json({ error: 'Invalid MCP bearer token.' });
+  }
+  if (key && (!key.lastUsedAt || Date.now() - Date.parse(key.lastUsedAt) > 60_000)) {
+    const now = new Date().toISOString();
+    const nextSettings = { ...normalized, mcpKeys: normalized.mcpKeys.map((item) => item.id === key.id ? { ...item, lastUsedAt: now } : item) };
+    await saveSettings(nextSettings);
   }
   return next();
 }
@@ -2594,6 +2632,7 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
     aiAllowPrivateBaseUrl,
     aiApiKey,
     aiApiKeyClear,
+    mcpEnabled,
   } = req.body || {};
   const requestedMode = 'api';
   const requestedCaddyApiUrl = caddyApiUrl === undefined ? settings.caddyApiUrl : normalizeApiUrl(caddyApiUrl, settings.caddyApiUrl);
@@ -2604,7 +2643,8 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
     trustProxyHops !== undefined ||
     allowRemoteSetup !== undefined ||
     secureCookieMode !== undefined ||
-    allowedOrigins !== undefined;
+    allowedOrigins !== undefined ||
+    mcpEnabled !== undefined;
   if (updatingSecuritySettings && !hasPermission(req.user?.role, 'admin')) {
     return res.status(403).json({ error: 'Admin permission required for security settings.' });
   }
@@ -2649,6 +2689,7 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
       secureCookieMode === undefined ? settings.secureCookieMode : normalizeCookieMode(secureCookieMode, settings.secureCookieMode),
     allowedOrigins:
       allowedOrigins === undefined ? settings.allowedOrigins : normalizeAllowedOrigins(allowedOrigins),
+    mcpEnabled: mcpEnabled === undefined ? settings.mcpEnabled : mcpEnabled === true,
   };
   await saveSettings(next);
   const store = await stateStore;
@@ -2665,6 +2706,31 @@ app.post('/api/settings', requireTrustedOrigin, auth, requirePermission('edit'),
     }
   }
   res.json({ settings: publicSettings(next, req.user.username) });
+});
+
+app.get('/api/mcp/keys', auth, requirePermission('admin'), async (_req, res) => {
+  res.json({ mcp: publicSettings(await loadSettings()).mcp });
+});
+
+app.post('/api/mcp/keys', requireTrustedOrigin, auth, requirePermission('admin'), async (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: 'A key name is required.' });
+  const settings = await loadSettings();
+  const token = `caddyui_mcp_${randomBytes(32).toString('base64url')}`;
+  const key = { id: randomUUID(), name, tokenHash: hashMcpToken(token), createdAt: new Date().toISOString(), lastUsedAt: '' };
+  const next = { ...settings, mcpEnabled: true, mcpKeys: [...normalizeSettings(settings).mcpKeys, key] };
+  await saveSettings(next);
+  res.status(201).json({ key: { id: key.id, name: key.name, createdAt: key.createdAt, lastUsedAt: '' }, token, mcp: publicSettings(next).mcp });
+});
+
+app.delete('/api/mcp/keys/:id', requireTrustedOrigin, auth, requirePermission('admin'), async (req, res) => {
+  const settings = await loadSettings();
+  const keys = normalizeSettings(settings).mcpKeys;
+  const nextKeys = keys.filter((key) => key.id !== req.params.id);
+  if (nextKeys.length === keys.length) return res.status(404).json({ error: 'MCP key not found.' });
+  const next = { ...settings, mcpKeys: nextKeys };
+  await saveSettings(next);
+  res.json({ mcp: publicSettings(next).mcp });
 });
 
 app.post('/api/settings/test-api', requireTrustedOrigin, auth, requirePermission('edit'), requireRateLimit('test-api', 20, 60 * 1000), async (req, res) => {

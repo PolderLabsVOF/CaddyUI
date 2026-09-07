@@ -2875,6 +2875,15 @@ p { text-wrap: pretty; }
 .settings-grid.two label { display: grid; gap: 7px; }
 .settings-form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; padding-top: 2px; }
 .settings-form-actions .primary { min-width: 180px; }
+
+.settings-help { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.mcp-created-key { display: grid; gap: 8px; margin-top: 14px; padding: 12px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); }
+.mcp-created-key code { overflow-wrap: anywhere; color: var(--text); font-size: 12px; }
+.mcp-key-list { display: grid; gap: 8px; }
+.mcp-key-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.mcp-key-row:last-child { border-bottom: 0; }
+.mcp-key-row strong, .mcp-key-row small { display: block; }
+.mcp-key-row small { margin-top: 3px; color: var(--muted); font-size: 11px; }
 .ai-private-warning { display: grid; gap: 2px; padding: 13px 14px; }
 .ai-private-warning small { margin: 0 0 0 25px; line-height: 1.45; }
 
