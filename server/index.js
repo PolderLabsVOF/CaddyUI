@@ -2550,6 +2550,7 @@ app.post('/api/ai/conversations/:id/messages', requireTrustedOrigin, auth, requi
     const conversation = await store.getAiConversation(req.params.id, req.user.username);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found.' });
     await store.appendAiMessage({ id: randomUUID(), conversationId: conversation.id, username: req.user.username, role: 'user', content: text, createdAt: Date.now() });
+    await store.nameAiConversation(conversation.id, req.user.username, summarizeText(text, 72));
     const messages = await store.listAiMessages(conversation.id, req.user.username);
     const context = await aiContextForUser(req.user);
     const controller = new AbortController();

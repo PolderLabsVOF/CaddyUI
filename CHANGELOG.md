@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (dev)
+## 0.2.27-beta - 2026-09-07
 
 ### Added
 
@@ -9,11 +9,16 @@
 - Add polished appearance controls with persistent light/dark mode and five browser-local accent choices.
 - Add project source and license information to Settings → About.
 - Add an update confirmation dialog showing the current version, target version, and selected channel before installation begins.
+- Add a remotely reachable, authenticated MCP endpoint with Settings-based key management.
+- Add an analytics workspace backed by observed request traffic.
+- Add automatic names for AI assistant conversations based on their first request.
 
 ### Changed
 
 - Redesign every Settings section with a structured status summary, icon navigation, consistent cards, responsive forms, and mobile layouts.
 - License current CaddyUI development under GNU AGPL-3.0-only; copies already received under MIT retain their existing grant.
+- Rebuild the proxy and middleware editor workspaces with structured configuration areas and complete Caddyfile escape hatches.
+- Refresh the AI assistant workspace with thread context, pixel-art activity states, and reduced-motion-aware GSAP feedback.
 
 ### Fixed
 
@@ -21,6 +26,7 @@
 - Reject confirmed AI delete proposals when the expected hostname no longer matches the selected proxy.
 - Replace decorative active-navigation bars with simple filled highlights.
 - Show compact update action icons instead of overflowing text when the sidebar is collapsed.
+- Correct analytics reporting so non-zero traffic appears in the dashboard.
 
 ### Security
 
