@@ -1,0 +1,46 @@
+name: Verify
+
+on:
+  pull_request:
+    branches: [dev, beta, main]
+  push:
+    branches: [dev, beta, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Enforce release-channel versioning
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          case "$BRANCH" in
+            main) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "main releases must use a stable x.y.z version; found $version"; exit 1; } ;;
+            beta) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta$ ]] || { echo "beta releases must use x.y.z-beta; found $version"; exit 1; } ;;
+          esac
+      - name: Type check
+        run: npm run typecheck
+      - name: Build production bundle
+        run: npm run build
+      - name: Validate installer shell syntax
+        run: bash -n scripts/install.sh
+      - name: Ensure clean generated output
+        run: git diff --exit-code

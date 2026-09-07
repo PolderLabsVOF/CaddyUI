@@ -1,0 +1,32 @@
+name: Nightly dev build
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: bash -n scripts/install.sh
+      - name: Package nightly artifact
+        run: tar -czf "caddyui-dev-${{ github.run_number }}-${GITHUB_SHA::7}.tar.gz" dist package.json package-lock.json scripts/install.sh README.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: caddyui-dev-${{ github.run_number }}-${{ github.sha }}
+          path: caddyui-dev-*.tar.gz
+          retention-days: 14

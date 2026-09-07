@@ -10,9 +10,7 @@ Thanks for helping improve CaddyUI.
 
 ## Branch flow
 
-- `dev` is the active development branch.
-- Do not open feature work directly against `main`.
-- Release flow is `dev` -> `beta` -> `main`.
+Follow [the development and release flow](DEVELOPMENT.md). In short: feature branches target `dev`, only `dev` is promoted to `beta`, and only `beta` is promoted to `main`.
 
 ## Local setup
 
@@ -32,6 +30,6 @@ npm run dev
    ```bash
    npm run build
    ```
-5. Open a PR to `dev` and fill out the PR template.
+5. Open a PR to `dev` and fill out the PR template. Protected branches require a passing **Verify** check and review.
 
 Please follow [Conventional Commits](https://www.conventionalcommits.org/).

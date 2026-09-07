@@ -2,6 +2,14 @@
 
 ## Pull Request type
 
+## Branch target
+
+- [ ] Feature/fix branch -> `dev`
+- [ ] `dev` -> `beta` release candidate
+- [ ] `beta` -> `main` stable release
+
+<!-- Other targets are not part of the supported release flow. -->
+
 <!-- Please try to limit your pull request to one type; submit multiple pull requests if needed. -->
 
 Please check the type of change your PR introduces:

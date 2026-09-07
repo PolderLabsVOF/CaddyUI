@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    branches: [beta, main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: publish-${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: bash -n scripts/install.sh
+      - name: Determine release metadata
+        id: release
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          branch="${GITHUB_REF_NAME}"
+          if [[ "$branch" == "main" ]]; then
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "main requires a stable x.y.z version"; exit 1; }
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta$ ]] || { echo "beta requires an x.y.z-beta version"; exit 1; }
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+      - name: Skip an already published version
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.release.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create release archive
+        if: steps.existing.outputs.exists == 'false'
+        run: tar -czf "caddyui-${{ steps.release.outputs.tag }}.tar.gz" dist package.json package-lock.json scripts/install.sh README.md
+      - name: Tag and publish GitHub release
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.release.outputs.tag }}" -m "${{ steps.release.outputs.tag }}"
+          git push origin "${{ steps.release.outputs.tag }}"
+          prerelease_flag=()
+          [[ "${{ steps.release.outputs.prerelease }}" == "true" ]] && prerelease_flag=(--prerelease)
+          gh release create "${{ steps.release.outputs.tag }}" "caddyui-${{ steps.release.outputs.tag }}.tar.gz" --title "${{ steps.release.outputs.tag }}" --generate-notes "${prerelease_flag[@]}"
