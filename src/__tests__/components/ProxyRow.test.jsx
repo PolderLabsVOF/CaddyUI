@@ -16,11 +16,12 @@ const site = {
 };
 
 describe('ProxyRow', () => {
-  test('uses seven aligned cells and a compact accessible actions menu', () => {
+  test('uses six aligned cells without displaying middleware imports', () => {
     const onEdit = vi.fn();
     const { container } = render(<ProxyRow site={site} healthCheck={{ online: true }} canEdit onEdit={onEdit} onDelete={vi.fn()} onToggleDisabled={vi.fn()} />);
-    expect(container.querySelector('.proxy-row-main').children).toHaveLength(7);
+    expect(container.querySelector('.proxy-row-main').children).toHaveLength(6);
     expect(container.querySelector('.proxy-state')).toBeNull();
+    expect(container.querySelector('.proxy-mw')).toBeNull();
     const trigger = screen.getByRole('button', { name: /actions for app\.example\.com/i });
     fireEvent.click(trigger);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CircleHelp, Copy, History, Loader2, RefreshCw, ScrollText, Search, XCircle } from 'lucide-react';
+import { Notice } from '../components/common.jsx';
 import '../logs.css';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
@@ -197,13 +198,17 @@ export default function Logs({ api, initialView = 'system', selectedEventId = ''
   const [refreshMs, setRefreshMs] = useState(readStoredRefreshMs);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState('');
 
   const loadLogs = async () => {
     if (localTest || busy) return;
     setBusy(true);
+    setError('');
     try {
       setLogs((await api(`/api/logs?lines=${lines}&mode=${mode}`)).logs || []);
       setLastUpdatedAt(Date.now());
+    } catch (loadError) {
+      setError(loadError.message || 'Unable to load system logs.');
     } finally {
       setBusy(false);
     }
@@ -212,9 +217,12 @@ export default function Logs({ api, initialView = 'system', selectedEventId = ''
   const loadEvents = async () => {
     if (localTest || eventBusy) return;
     setEventBusy(true);
+    setError('');
     try {
       setEvents((await api('/api/events?limit=250')).events || []);
       setLastUpdatedAt(Date.now());
+    } catch (loadError) {
+      setError(loadError.message || 'Unable to load activity history.');
     } finally {
       setEventBusy(false);
     }
@@ -340,6 +348,10 @@ export default function Logs({ api, initialView = 'system', selectedEventId = ''
   };
 
   const updatedLabel = lastUpdatedAt ? `Updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : 'Not refreshed yet';
+  const clearLogFilters = () => { setLogQuery(''); setLogSeverity('all'); setLogSource('all'); setLogSort('newest'); setRawView(false); };
+  const clearEventFilters = () => { setEventQuery(''); setEventStatus('all'); setEventKind('all'); setEventSort('newest'); };
+  const hasLogFilters = Boolean(logQuery || logSeverity !== 'all' || logSource !== 'all' || logSort !== 'newest' || rawView);
+  const hasEventFilters = Boolean(eventQuery || eventStatus !== 'all' || eventKind !== 'all' || eventSort !== 'newest');
 
   return (
     <section>
@@ -373,6 +385,7 @@ export default function Logs({ api, initialView = 'system', selectedEventId = ''
           <History size={16} /> Event log
         </button>
       </div>
+      {error && <Notice type="error">{error}</Notice>}
 
       {view === 'system' && (
         <div className="log-diagnostics">
@@ -407,6 +420,7 @@ export default function Logs({ api, initialView = 'system', selectedEventId = ''
               <option value="journal">Journal only</option>
             </select>
             <button type="button" className={rawView ? 'active-filter' : ''} onClick={() => setRawView((current) => !current)}>Raw</button>
+            {hasLogFilters && <button type="button" className="logs-clear-filters" onClick={clearLogFilters}>Clear filters</button>}
           </div>
 
           {busy && parsedLogs.length === 0 && <div className="proxy-loading"><div className="proxy-row-skeleton"><span /><span /><span /><span /><span /></div><div className="proxy-row-skeleton"><span /><span /><span /><span /><span /></div></div>}
@@ -462,6 +476,7 @@ export default function Logs({ api, initialView = 'system', selectedEventId = ''
                   <select value={eventSort} onChange={(event) => setEventSort(event.target.value)} aria-label="Sort activity events">
                     <option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="severity">Severity</option><option value="actor">Actor</option><option value="action">Action</option>
                   </select>
+                  {hasEventFilters && <button type="button" className="logs-clear-filters" onClick={clearEventFilters}>Clear filters</button>}
                 </div>
               </div>
               <div className="event-table-wrap">

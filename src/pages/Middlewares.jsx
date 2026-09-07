@@ -204,6 +204,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
   const creatorNameRef = useRef(null);
 
   const query = search.trim().toLowerCase();
+  const hasActiveFilters = Boolean(query || typeFilter !== 'all' || usageFilter !== 'all' || scopeFilter !== 'all');
   const filteredSnippets = useMemo(() => {
     const items = snippets.filter((snippet) => filterSnippet(snippet, query, typeFilter, usageFilter, scopeFilter));
     return items.sort((left, right) => {
@@ -621,6 +622,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
           <div className="middleware-empty">
             <h3>No middleware matches</h3>
             <p>Try loosening the filters or create a new snippet from a starter template.</p>
+            {hasActiveFilters ? <button type="button" onClick={clearFilters}>Clear filters</button> : canEdit ? <button type="button" onClick={openCreator}><Plus size={16} />Create middleware</button> : null}
           </div>
         )}
       </div>

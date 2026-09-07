@@ -32,7 +32,6 @@ function sortValue(site, key, health) {
   if (key === 'local') return Boolean(health?.[site.id]?.local?.online);
   if (key === 'category') return site.category || '';
   if (key === 'tags') return (site.tags || []).join(', ');
-  if (key === 'imports') return [...(site.imports || []).map((i) => i.name), ...((site.proxies?.[0]?.imports || []).map((i) => i.name))].join(', ');
   return '';
 }
 
@@ -600,7 +599,6 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
                 <button type="button" className={`table-sort ${sort.key === 'local' ? 'active' : ''}`} onClick={() => toggleSort('local')}>Local{sortArrow('local')}</button>
                 <button type="button" className={`table-sort ${sort.key === 'category' ? 'active' : ''}`} onClick={() => toggleSort('category')}>Category{sortArrow('category')}</button>
                 <button type="button" className={`table-sort ${sort.key === 'tags' ? 'active' : ''}`} onClick={() => toggleSort('tags')}>Tags{sortArrow('tags')}</button>
-                <button type="button" className={`table-sort ${sort.key === 'imports' ? 'active' : ''}`} onClick={() => toggleSort('imports')}>Imports{sortArrow('imports')}</button>
                 <span>Actions</span>
               </div>
               {items.slice(0, renderLimits[groupName] || 0).map((site) => (

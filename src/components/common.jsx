@@ -444,7 +444,6 @@ export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onE
         </div>
         <span className="proxy-category proxy-meta-value" data-label="Category">{site.category || 'none'}</span>
         <span className="proxy-tags proxy-meta-value" data-label="Tags" title={(site.tags || []).join(', ')}>{(site.tags || []).join(', ') || 'none'}</span>
-        <span className="proxy-mw proxy-meta-value" data-label="Imports" title={[...site.imports.map((i) => i.name), ...(site.proxies[0]?.imports?.map((i) => i.name) || [])].join(', ')}>{[...site.imports.map((i) => i.name), ...(site.proxies[0]?.imports?.map((i) => i.name) || [])].join(', ') || 'none'}</span>
         <div className="row-actions" ref={menuContainerRef}>
           {canEdit && (
             <button type="button" className="row-menu-trigger" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={`Actions for ${addresses[0] || 'proxy'}`} onClick={(e) => { e.stopPropagation(); setMenuOpen((open) => !open); }}>
