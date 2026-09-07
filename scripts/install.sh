@@ -3,16 +3,18 @@ set -Eeuo pipefail
 umask 077
 
 APP_NAME="CaddyUI"
-SCRIPT_CHANNEL="dev"
-INSTALLER_VERSION="2026.05.11-3"
+SCRIPT_CHANNEL="stable"
+INSTALLER_VERSION="2026.09.07-1"
 REPO_URL="https://github.com/PolderLabsVOF/CaddyUI.git"
-BRANCH="${CADDYUI_BRANCH:-$SCRIPT_CHANNEL}"
+GITHUB_REPOSITORY="PolderLabsVOF/CaddyUI"
+GITHUB_RELEASES_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest"
+BRANCH="${CADDYUI_BRANCH:-main}"
+STABLE_RELEASE_TAG="${CADDYUI_STABLE_RELEASE_TAG:-}"
 DEV_NIGHTLY_URL="${CADDYUI_DEV_NIGHTLY_URL:-}"
 DEV_NIGHTLY_COMMIT="${CADDYUI_DEV_NIGHTLY_COMMIT:-}"
 DEV_NIGHTLY_SHA256="${CADDYUI_DEV_NIGHTLY_SHA256:-}"
 DEV_NIGHTLY_ASSET_PREFIX="caddyui-nightly-"
 UPDATE_STATUS_FILE="${CADDYUI_UPDATE_STATUS_FILE:-}"
-CONFIG_MODE="${CADDYUI_CONFIG_MODE:-}"
 CADDY_API_URL="${CADDYUI_CADDY_API_URL:-http://127.0.0.1:2019}"
 START_PORT="${CADDYUI_PORT:-8787}"
 PORT_SCAN_LIMIT="${CADDYUI_PORT_SCAN_LIMIT:-100}"
@@ -38,25 +40,27 @@ PENDING_CADDY_RELOAD=0
 PENDING_PROXY_HOST=""
 PENDING_CADDYFILE=""
 
-BLUE='\033[0;34m'; CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; BOLD='\033[1m'; NC='\033[0m'
+BLUE='\033[0;34m'; CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; MAGENTA='\033[0;35m'; DIM='\033[2m'; BOLD='\033[1m'; NC='\033[0m'
 
 logo() {
-  printf "%b\n" "${CYAN}"
+  printf "%b\n" "${CYAN}${BOLD}"
   cat <<'ART'
-   ______          __    __      __  ______
-  / ____/___ _____/ /___/ /_  __/ / / /  _/
- / /   / __ `/ __  / __  / / / / / / // /  
-/ /___/ /_/ / /_/ / /_/ / /_/ / /_/ // /   
-\____/\__,_/\__,_/\__,_/\__, /\____/___/   
-                        /____/             
+  ╭──────────────────────────────────────────╮
+  │   ______          __    __      __  ______ │
+  │  / ____/___ _____/ /___/ /_  __/ / / /  _/ │
+  │ / /   / __ `/ __  / __  / / / / / / // /   │
+  │/ /___/ /_/ / /_/ / /_/ / /_/ / /_/ // /    │
+  │\____/\__,_/\__,_/\__,_/\__, /\____/___/    │
+  │                        /____/              │
+  ╰──────────────────────────────────────────╯
 ART
-  printf "%b\n" "${NC}${BOLD}Automated installer${NC}"
-  printf "%b\n" "installer ${INSTALLER_VERSION}\n"
+  printf "%b\n" "${NC}${BOLD}  Caddy control plane installer${NC} ${DIM}· ${INSTALLER_VERSION}${NC}"
+  printf "%b\n" "${DIM}  Stable by default. API-managed by design.${NC}\n"
 }
 
-step() { printf "%b\n" "${BLUE}▶${NC} ${BOLD}$*${NC}"; }
+step() { printf "%b\n" "${MAGENTA}◆${NC} ${BOLD}$*${NC}"; }
 ok() { printf "%b\n" "${GREEN}✓${NC} $*"; }
-warn() { printf "%b\n" "${YELLOW}!${NC} $*"; }
+warn() { printf "%b\n" "${YELLOW}▲${NC} $*"; }
 update_status() {
   [[ -n "$UPDATE_STATUS_FILE" ]] || return 0
   local phase="$1" percent="$2" message="$3" temporary
@@ -181,6 +185,40 @@ check_and_install_prerequisites() {
   fi
 }
 
+validate_update_branch() {
+  case "$BRANCH" in
+    main|beta|dev) return 0 ;;
+    *) fail "Unsupported update channel '$BRANCH'. Use main (stable), beta, or dev." ;;
+  esac
+}
+
+resolve_stable_release_tag() {
+  local release_json tag
+  if [[ "$DRY_RUN" == "1" && -n "$STABLE_RELEASE_TAG" ]]; then
+    tag="$STABLE_RELEASE_TAG"
+  else
+    step "Resolving latest stable release"
+    if ! release_json="$(curl --fail --silent --show-error --location --retry 3 "$GITHUB_RELEASES_URL")"; then
+      fail "Unable to resolve the latest stable release from GitHub."
+    fi
+    if ! tag="$(node -e '
+      const release = JSON.parse(process.argv[1]);
+      if (release.prerelease || release.draft || typeof release.tag_name !== "string") process.exit(1);
+      process.stdout.write(release.tag_name);
+    ' "$release_json")"; then
+      fail "GitHub did not return a valid stable release."
+    fi
+  fi
+  [[ "$tag" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Refusing non-stable release tag: $tag"
+  STABLE_RELEASE_TAG="$tag"
+  ok "Latest stable release: $STABLE_RELEASE_TAG"
+}
+
+prepare_update_source() {
+  validate_update_branch
+  [[ "$BRANCH" == "main" ]] && resolve_stable_release_tag
+}
+
 sqlite_runtime_ok() {
   if [[ "$DRY_RUN" == "1" ]]; then return 0; fi
   if [[ ! -d "$INSTALL_DIR/node_modules/sqlite3" ]]; then return 1; fi
@@ -291,7 +329,7 @@ CADDY_UI_PORT=$PORT
 CADDY_UI_DATA_DIR=$DATA_DIR
 CADDY_UI_SECRET=$SECRET
 CADDY_UI_SETUP_TOKEN=$SETUP_TOKEN_VALUE
-CADDY_UI_CONFIG_MODE=$CONFIG_MODE
+CADDY_UI_CONFIG_MODE=api
 CADDY_UI_CADDY_API_URL=$CADDY_API_URL
 ENV
   chmod 600 "$INSTALL_DIR/.env" || true
@@ -377,21 +415,6 @@ read_tty() {
 valid_domain() {
   [[ "$1" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]
 }
-select_config_mode() {
-  local answer=""
-  case "${CONFIG_MODE,,}" in
-    api|file) CONFIG_MODE="${CONFIG_MODE,,}"; return 0 ;;
-  esac
-  if [[ "${CADDYUI_ASSUME_YES:-0}" == "1" ]]; then
-    CONFIG_MODE="api"
-    return 0
-  fi
-  answer="$(read_tty "Install in API mode or file mode? [api/file] (default: api): " || true)"
-  answer="${answer:-api}"
-  answer="${answer,,}"
-  [[ "$answer" == "api" || "$answer" == "file" ]] || fail "Invalid config mode: $answer"
-  CONFIG_MODE="$answer"
-}
 caddy_api_healthy() {
   curl -fsS "${CADDY_API_URL%/}/config/" >/dev/null 2>&1
 }
@@ -426,6 +449,10 @@ enable_caddy_api_in_file() {
 }
 ensure_api_mode_ready() {
   local file=""
+  if [[ "$DRY_RUN" == "1" ]]; then
+    ok "Would verify the Caddy Admin API at $CADDY_API_URL"
+    return 0
+  fi
   if caddy_api_healthy; then
     ok "Caddy API is reachable at $CADDY_API_URL"
     return 0
@@ -451,7 +478,6 @@ ensure_api_mode_ready() {
 # changes made through CaddyUI. The distribution ships caddy-api.service for
 # this exact mode; prefer it whenever systemd is available.
 ensure_durable_caddy_api_service() {
-  [[ "$CONFIG_MODE" == "api" ]] || return 0
   if ! systemd_available; then
     warn "systemd is unavailable; ensure Caddy starts with 'caddy run --resume' yourself."
     return 0
@@ -668,6 +694,10 @@ run_existing_update() {
   run_quiet git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL"
   if [[ "$BRANCH" == "dev" && -n "$DEV_NIGHTLY_URL" ]]; then
     install_dev_nightly
+  elif [[ "$BRANCH" == "main" ]]; then
+    run_quiet git -C "$INSTALL_DIR" fetch --quiet --tags origin
+    run_quiet git -C "$INSTALL_DIR" checkout --quiet --detach "$STABLE_RELEASE_TAG"
+    run_quiet git -C "$INSTALL_DIR" reset --hard "$STABLE_RELEASE_TAG"
   else
     run_quiet git -C "$INSTALL_DIR" fetch --quiet origin "$BRANCH"
     run_quiet git -C "$INSTALL_DIR" checkout --quiet "$BRANCH"
@@ -755,11 +785,9 @@ mkdir -p "$LOG_DIR"
 step "Checking prerequisites"
 check_and_install_prerequisites
 ok "Required tools are available"
-select_config_mode
-if [[ "$CONFIG_MODE" == "api" ]]; then
-  ensure_api_mode_ready
-  ensure_durable_caddy_api_service
-fi
+prepare_update_source
+ensure_api_mode_ready
+ensure_durable_caddy_api_service
 if [[ "$BRANCH" == "dev" ]]; then
   warn "Development branch. Not stable."
 fi
@@ -781,12 +809,21 @@ ok "Using port $PORT"
 
 step "Downloading CaddyUI from GitHub"
 if [[ -d "$INSTALL_DIR/.git" ]]; then
-  run_quiet git -C "$INSTALL_DIR" fetch --quiet origin "$BRANCH"
-  run_quiet git -C "$INSTALL_DIR" checkout --quiet "$BRANCH"
-  run_quiet git -C "$INSTALL_DIR" pull --ff-only --quiet origin "$BRANCH"
+  if [[ "$BRANCH" == "main" ]]; then
+    run_quiet git -C "$INSTALL_DIR" fetch --quiet --tags origin
+    run_quiet git -C "$INSTALL_DIR" checkout --quiet --detach "$STABLE_RELEASE_TAG"
+  else
+    run_quiet git -C "$INSTALL_DIR" fetch --quiet origin "$BRANCH"
+    run_quiet git -C "$INSTALL_DIR" checkout --quiet "$BRANCH"
+    run_quiet git -C "$INSTALL_DIR" pull --ff-only --quiet origin "$BRANCH"
+  fi
 else
   rm -rf "$INSTALL_DIR"
-  run_quiet git clone --quiet --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+  if [[ "$BRANCH" == "main" ]]; then
+    run_quiet git clone --quiet --branch "$STABLE_RELEASE_TAG" "$REPO_URL" "$INSTALL_DIR"
+  else
+    run_quiet git clone --quiet --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+  fi
 fi
 if [[ "$DRY_RUN" == "1" ]]; then mkdir -p "$INSTALL_DIR"; fi
 ok "Source is ready"

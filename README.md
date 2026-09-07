@@ -17,7 +17,7 @@
 
 CaddyUI is a self-hosted control plane for Caddy. It gives you a safer place to manage reverse proxies, reusable middleware, live configuration, TLS automation, logs, access, and updates.
 
-API mode is the recommended path: changes are validated and applied through Caddy’s Admin API, and API-mode installations survive restarts through Caddy’s `--resume` support. File mode remains available for existing Caddyfile-managed installations.
+The installer configures API mode: changes are validated and applied through Caddy’s Admin API, and API-managed installations survive restarts through Caddy’s `--resume` support.
 
 > CaddyUI is under active development. Use the stable channel for production; beta and nightly builds are for testing newer work.
 
@@ -29,18 +29,18 @@ Run the stable installer on the Caddy host:
 curl -fsSL https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/main/scripts/install.sh | bash
 ```
 
-The installer creates the service, configures API-mode Caddy where the distribution supports it, and prints a one-time onboarding URL. Run the same command again to update the installed channel.
+The installer creates the service, configures API-mode Caddy where the distribution supports it, and prints a one-time onboarding URL. It resolves GitHub’s latest non-prerelease release and installs that exact stable tag—never a beta or nightly build. Run the same command again to update to the latest stable release.
 
 <details>
 <summary>Choose a release channel</summary>
 
-| Channel | Branch | Intended use | Installer |
+| Channel | Source | Intended use | How to use it |
 | --- | --- | --- | --- |
-| Stable | `main` | Production releases | `.../main/scripts/install.sh` |
-| Beta | `beta` | Pre-release verification | `.../beta/scripts/install.sh` |
-| Nightly | `dev` | Active development; may change with every verified push | `.../dev/scripts/install.sh` |
+| Stable | published stable release | Production releases | `.../main/scripts/install.sh` |
+| Beta | `beta` | Pre-release verification | Select it from CaddyUI after installing stable. |
+| Nightly | verified `dev` artifact | Active development; may change with every verified push | Select it from CaddyUI after installing stable. |
 
-Replace `main` in the command above with `beta` or `dev` to install that channel.
+The curl installer is intentionally stable-only. Select **Beta** or **Nightly** from CaddyUI’s in-app update channel control when you explicitly want a pre-release build.
 </details>
 
 ## What you can control
@@ -136,8 +136,6 @@ Read the [development guide](docs/DEVELOPMENT.md) before opening a change and th
 - [Releases](https://github.com/PolderLabsVOF/CaddyUI/releases)
 - [Report a bug or request a feature](https://github.com/PolderLabsVOF/CaddyUI/issues)
 - [Stable installer](https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/main/scripts/install.sh)
-- [Beta installer](https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/beta/scripts/install.sh)
-- [Nightly installer](https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/dev/scripts/install.sh)
 
 ## Uninstall or reset
 
