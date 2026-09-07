@@ -490,10 +490,11 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
         <div className="modal-backdrop" onMouseDown={() => setEdit(null)}>
           <form className="edit-modal proxy-edit-modal" onSubmit={saveEdit} onMouseDown={(e) => e.stopPropagation()}>
             <div className="modal-head">
-              <div><h3>Edit proxy</h3><p>{edit.disabled ? 'Disabled. Enable it before traffic can reach this upstream.' : 'Changes apply to this proxy’s generated Caddyfile block.'}</p></div>
+              <div><h3>{edit.host || 'Untitled proxy'}</h3><p>{edit.disabled ? 'Disabled — enable it before traffic can reach this upstream.' : `Routes to ${edit.upstream || 'an upstream'}`}</p></div>
               <button type="button" onClick={() => setEdit(null)}>Close</button>
             </div>
-            <div className="config-mode-tabs" role="tablist" aria-label="Proxy configuration"><button type="button" role="tab" aria-selected={edit.tab === 'overview'} className={edit.tab === 'overview' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'overview', rawOpen: false }))}>Overview</button><button type="button" role="tab" aria-selected={edit.tab === 'routing'} className={edit.tab === 'routing' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'routing', rawOpen: false }))}>Routing</button><button type="button" role="tab" aria-selected={edit.tab === 'operations'} className={edit.tab === 'operations' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'operations', rawOpen: false }))}>Operations</button><button type="button" role="tab" aria-selected={edit.tab === 'advanced'} className={edit.tab === 'advanced' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'advanced', rawOpen: true, rawBlock: previewProxyBlock(config.content, current) }))}>Caddyfile</button></div>
+            <div className="modal-context"><span className={edit.disabled ? 'status-off' : 'status-on'}>{edit.disabled ? 'Disabled' : 'Live'}</span><span>{edit.imports ? `${edit.imports.split(',').filter(Boolean).length} middleware imports` : 'No middleware imports'}</span><span>{edit.logMode === 'none' ? 'Logging off' : `Logging: ${edit.logMode}`}</span></div>
+            <div className="config-mode-tabs" role="tablist" aria-label="Proxy configuration"><button type="button" role="tab" aria-selected={edit.tab === 'overview'} className={edit.tab === 'overview' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'overview', rawOpen: false }))}>Connection</button><button type="button" role="tab" aria-selected={edit.tab === 'routing'} className={edit.tab === 'routing' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'routing', rawOpen: false }))}>Routing</button><button type="button" role="tab" aria-selected={edit.tab === 'operations'} className={edit.tab === 'operations' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'operations', rawOpen: false }))}>Operations</button><button type="button" role="tab" aria-selected={edit.tab === 'advanced'} className={edit.tab === 'advanced' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'advanced', rawOpen: true, rawBlock: previewProxyBlock(config.content, current) }))}>Advanced Caddyfile</button></div>
             {edit.tab !== 'advanced' ? <div className="proxy-edit-layout">
               {edit.tab === 'overview' &&
               <section className="proxy-edit-card">
@@ -570,7 +571,7 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
               }
             </div> : (
               <section className="proxy-advanced-editor">
-                <div><h4>Full proxy block</h4><p>Use this mode for any Caddyfile directive not represented in Details. The entire block is validated before it is applied.</p></div>
+                <div><h4>Full proxy block</h4><p>Use any Caddyfile directive here—matchers, transports, header rules, load balancing, health checks, and more. The complete block is validated before it is applied.</p></div>
                 <div className="raw-proxy-editor">
                 <Editor height="360px" defaultLanguage="caddyfile" theme={theme === 'light' ? 'light' : 'vs-dark'} value={edit.rawBlock} onChange={(value) => setEdit({ ...edit, rawBlock: value || '' })} options={{ minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', scrollBeyondLastLine: false }} />
                 </div>

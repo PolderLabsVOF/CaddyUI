@@ -1255,7 +1255,7 @@ label {
 }
 
 .middleware-edit-modal {
-  width: min(920px, 100%);
+  width: min(1040px, 100%);
 }
 
 .middleware-edit-layout {
@@ -1267,7 +1267,7 @@ label {
 .middleware-dialog-actions .danger { justify-content: flex-start; }
 .middleware-preview-help { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .config-mode-tabs { display: flex; gap: 7px; margin: 0; padding: 0 0 14px; overflow-x: auto; border-bottom: 1px solid var(--line); }
-.config-mode-tabs button { flex: 0 0 auto; }
+.config-mode-tabs button { flex: 0 0 auto; min-height: 38px; padding-inline: 13px; }
 .config-mode-tabs button.active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text); }
 .proxy-enabled-toggle { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 13px; font-weight: 700; }
 .proxy-enabled-toggle input { width: auto; }
@@ -1731,7 +1731,7 @@ label {
 }
 
 .proxy-edit-modal {
-  width: min(920px, 100%);
+  width: min(1040px, 100%);
 }
 
 .proxy-edit-layout {
@@ -1741,7 +1741,7 @@ label {
 }
 
 .proxy-edit-card {
-  width: min(100%, 760px);
+  width: 100%;
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--line);
@@ -1752,7 +1752,18 @@ label {
   align-content: start;
 }
 
-.middleware-edit-layout .proxy-edit-card { width: min(100%, 760px); }
+.middleware-edit-layout .proxy-edit-card { width: 100%; }
+.modal-context { display: flex; flex-wrap: wrap; gap: 7px; margin-top: -2px; }
+.modal-context span { padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 11px; font-weight: 650; }
+.modal-context .status-on { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); color: var(--ok); }
+.modal-context .status-off { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); color: var(--bad); }
+.proxy-edit-card > h4 { margin: 0 0 4px; font-size: 15px; }
+.proxy-edit-card > h4 + label { margin-top: 4px; }
+.proxy-edit-card label { max-width: 760px; }
+.proxy-edit-card .import-dropdown { max-width: 760px; }
+.proxy-advanced-editor { padding: 4px 0 0; }
+.proxy-advanced-editor .raw-proxy-editor { margin-top: 4px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.middleware-preview-card pre { max-width: 100%; min-height: 420px; max-height: 52dvh; }
 .middleware-usage-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-height: 216px; overflow: auto; padding-right: 4px; }
 .middleware-usage-chips span { padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 11px; line-height: 1.25; }
 .edit-modal > .toolbar { position: sticky; bottom: -22px; z-index: 2; margin: 0 -22px -22px; padding: 14px 22px 18px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); }

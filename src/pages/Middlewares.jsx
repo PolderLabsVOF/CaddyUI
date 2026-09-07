@@ -635,12 +635,13 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
           <form className="edit-modal middleware-edit-modal" onSubmit={save} onMouseDown={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div>
-                <h3>Edit middleware</h3>
-                <p>Manage reuse details, then edit every Caddyfile directive in the snippet body.</p>
+                <h3>({edit.name || 'middleware'})</h3>
+                <p>{edit.usedBy?.length ? `Imported by ${edit.usedBy.length} routes` : 'Not imported by any route yet'}</p>
               </div>
               <button type="button" onClick={() => setEdit(null)}>Close</button>
             </div>
-            <div className="config-mode-tabs" role="tablist" aria-label="Middleware configuration"><button type="button" role="tab" aria-selected={edit.tab === 'compose'} className={edit.tab === 'compose' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'compose' }))}>Compose</button><button type="button" role="tab" aria-selected={edit.tab === 'reuse'} className={edit.tab === 'reuse' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'reuse' }))}>Reuse & actions</button><button type="button" role="tab" aria-selected={edit.tab === 'preview'} className={edit.tab === 'preview' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'preview' }))}>Caddyfile preview</button></div>
+            <div className="modal-context"><span>{edit.inferredType || 'snippet'}</span><span>{edit.scope} scope</span><span>{snippetDirectiveSummary(edit)}</span></div>
+            <div className="config-mode-tabs" role="tablist" aria-label="Middleware configuration"><button type="button" role="tab" aria-selected={edit.tab === 'compose'} className={edit.tab === 'compose' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'compose' }))}>Directives</button><button type="button" role="tab" aria-selected={edit.tab === 'reuse'} className={edit.tab === 'reuse' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'reuse' }))}>Reuse & actions</button><button type="button" role="tab" aria-selected={edit.tab === 'preview'} className={edit.tab === 'preview' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'preview' }))}>Generated block</button></div>
             <div className="middleware-edit-layout">
               {edit.tab === 'reuse' &&
               <div className="proxy-edit-card">
