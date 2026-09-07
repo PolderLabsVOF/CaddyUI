@@ -536,24 +536,6 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
             </form>
           )}
 
-          {activeSection === 'ai' && (
-            <div className="settings-card">
-              <div className="settings-section-head"><div><h3>AI assistant</h3><p>Connect a provider for guided proxy inspection and confirmed management actions.</p></div></div>
-              <div className="settings-card-body">
-                <label className="check-row"><input type="checkbox" checked={Boolean(form.aiEnabled)} onChange={(e) => setForm({ ...form, aiEnabled: e.target.checked })} disabled={!canAdmin} />Enable AI assistant</label>
-                <div className="settings-grid two">
-                  <label>Provider<select value={form.aiProvider} onChange={(e) => setForm({ ...form, aiProvider: e.target.value })} disabled={!canAdmin}><option value="openai">OpenAI-compatible</option><option value="anthropic">Anthropic-compatible</option></select></label>
-                  <label>Model<input value={form.aiModel} onChange={(e) => setForm({ ...form, aiModel: e.target.value })} readOnly={!canAdmin} placeholder={form.aiProvider === 'anthropic' ? 'claude-sonnet-4-5' : 'gpt-4.1-mini'} /></label>
-                </div>
-                <label>Base URL<input value={form.aiBaseUrl} onChange={(e) => setForm({ ...form, aiBaseUrl: e.target.value })} readOnly={!canAdmin} placeholder={form.aiProvider === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com'} /></label>
-                <label>API key<input type="password" autoComplete="new-password" value={form.aiApiKey} onChange={(e) => { setForm({ ...form, aiApiKey: e.target.value }); if (e.target.value) setClearAiApiKey(false); }} readOnly={!canAdmin} placeholder={settings.hasAiApiKey ? 'Configured — enter a new key to rotate' : 'Enter provider API key'} /></label>
-                {settings.hasAiApiKey && <label className="check-row"><input type="checkbox" checked={clearAiApiKey} onChange={(e) => { setClearAiApiKey(e.target.checked); if (e.target.checked) setForm({ ...form, aiApiKey: '' }); }} disabled={!canAdmin} />Clear configured AI API key when saving</label>}
-                <div className="ai-private-warning"><label className="check-row"><input type="checkbox" checked={Boolean(form.aiAllowPrivateBaseUrl)} onChange={(e) => setForm({ ...form, aiAllowPrivateBaseUrl: e.target.checked })} disabled={!canAdmin} />Allow private/local provider URLs</label><small>Only enable this for a trusted Ollama, LM Studio, or LAN gateway. Cloud metadata and link-local endpoints remain blocked.</small></div>
-                <div className="toolbar"><button type="button" onClick={testAiProvider} disabled={!canAdmin || testingAi || !form.aiBaseUrl.trim() || !form.aiModel.trim()}>{testingAi ? 'Testing...' : 'Test AI provider'}</button></div>
-              </div>
-            </div>
-          )}
-
           {activeSection === 'security' && (
             <form className="settings-form settings-card-grid" onSubmit={save}>
               <div className="settings-section-head">
