@@ -433,6 +433,57 @@ ensure_api_mode_ready() {
   fi
   warn "Caddy API is still not reachable. You may need to reload Caddy manually."
 }
+
+# Caddy's file-backed unit deliberately reloads the Caddyfile on every start.
+# That is incompatible with an API-managed configuration: it silently discards
+# changes made through CaddyUI. The distribution ships caddy-api.service for
+# this exact mode; prefer it whenever systemd is available.
+ensure_durable_caddy_api_service() {
+  [[ "$CONFIG_MODE" == "api" ]] || return 0
+  if ! systemd_available; then
+    warn "systemd is unavailable; ensure Caddy starts with 'caddy run --resume' yourself."
+    return 0
+  fi
+  if ! systemctl cat caddy-api.service >/dev/null 2>&1; then
+    warn "caddy-api.service is not installed. Configure Caddy to run with --resume before relying on API-managed configuration."
+    return 0
+  fi
+  if [[ "$DRY_RUN" == "1" ]]; then
+    ok "Would switch Caddy to durable API mode (caddy-api.service)"
+    return 0
+  fi
+
+  step "Making Caddy API configuration durable"
+  # The active config is also Caddy's resume source. Keep a private snapshot
+  # before changing units so an operator can recover even if a local package is
+  # customised.
+  mkdir -p "$DATA_DIR/backups"
+  curl -fsS "${CADDY_API_URL%/}/config/" > "$DATA_DIR/backups/caddy-api-before-service-switch-$(date +%Y%m%d%H%M%S).json" || true
+  chmod 600 "$DATA_DIR"/backups/caddy-api-before-service-switch-*.json 2>/dev/null || true
+
+  sudo_cmd systemctl enable caddy-api.service
+  sudo_cmd systemctl disable caddy.service || true
+  if systemctl is-active --quiet caddy.service; then
+    sudo_cmd systemctl stop caddy.service
+  fi
+  sudo_cmd systemctl start caddy-api.service
+  if ! systemctl is-active --quiet caddy-api.service || ! caddy_api_healthy; then
+    warn "caddy-api.service did not become healthy. Restoring caddy.service."
+    sudo_cmd systemctl stop caddy-api.service || true
+    sudo_cmd systemctl enable caddy.service || true
+    sudo_cmd systemctl start caddy.service || true
+    fail "Could not switch Caddy to durable API mode. The original service was restored."
+  fi
+  ok "Caddy now resumes its API-managed configuration after restart"
+}
+
+apply_caddyfile_via_api() {
+  local file="$1"
+  curl -fsS -X POST \
+    -H 'Content-Type: text/caddyfile' \
+    --data-binary "@$file" \
+    "${CADDY_API_URL%/}/load" >/dev/null
+}
 find_caddyfiles() {
   local paths=(
     "${CADDYFILE_PATH:-}"
@@ -586,18 +637,14 @@ $host {
 
 prompt_caddy_reload() {
   [[ "$PENDING_CADDY_RELOAD" -eq 1 ]] || return 0
-  if ! has_cmd caddy; then
-    warn "Reload Caddy manually to activate $PENDING_PROXY_HOST."
-    return 0
-  fi
-  if confirm "Reload Caddy now?" yes; then
-    if caddy reload --config "$PENDING_CADDYFILE" --adapter caddyfile >> "$INSTALL_LOG" 2>&1; then
-      ok "Caddy reloaded"
+  if confirm "Apply the CaddyUI proxy through the Admin API now?" yes; then
+    if apply_caddyfile_via_api "$PENDING_CADDYFILE" >> "$INSTALL_LOG" 2>&1; then
+      ok "Caddy configuration applied through the Admin API"
     else
-      warn "Caddy reload failed. Reload it manually."
+      warn "Caddy Admin API apply failed. The Caddyfile was updated but Caddy's live API configuration was not changed."
     fi
   else
-    warn "Reload Caddy manually to activate $PENDING_PROXY_HOST."
+    warn "Apply the proxy through CaddyUI after installation to activate $PENDING_PROXY_HOST."
   fi
 }
 
@@ -660,6 +707,7 @@ ok "Required tools are available"
 select_config_mode
 if [[ "$CONFIG_MODE" == "api" ]]; then
   ensure_api_mode_ready
+  ensure_durable_caddy_api_service
 fi
 if [[ "$BRANCH" == "dev" ]]; then
   warn "Development branch. Not stable."
