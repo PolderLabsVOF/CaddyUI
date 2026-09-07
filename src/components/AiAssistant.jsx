@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Bot, Check, ChevronDown, Loader2, MessageSquarePlus, Send, Sparkles, Trash2, X } from 'lucide-react';
+import { gsap } from 'gsap';
 import { Notice } from './common.jsx';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
@@ -17,6 +18,14 @@ function actionLabel(type = '') {
   return String(type).replaceAll('_', ' ').replace(/^./, (value) => value.toUpperCase());
 }
 
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function PixelMark({ className = '' }) {
+  return <span className={`ai-pixel-mark ${className}`} aria-hidden="true">{Array.from({ length: 9 }, (_, index) => <i key={index} />)}</span>;
+}
+
 export default function AiAssistant({ api, settings, canAdmin, onActionComplete, onOpenSettings, notify }) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState(localTest ? { enabled: true, configured: true, provider: 'openai', model: 'local-test', canEdit: true } : null);
@@ -27,7 +36,9 @@ export default function AiAssistant({ api, settings, canAdmin, onActionComplete,
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [actionBusy, setActionBusy] = useState('');
+  const panelRef = useRef(null);
   const listRef = useRef(null);
+  const thinkingRef = useRef(null);
 
   const configured = localTest || Boolean(status?.configured || (settings?.aiEnabled && settings?.hasAiApiKey && settings?.aiBaseUrl && settings?.aiModel));
   const visible = localTest || Boolean(settings?.aiEnabled || canAdmin);
@@ -78,6 +89,34 @@ export default function AiAssistant({ api, settings, canAdmin, onActionComplete,
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, busy]);
+
+  useEffect(() => {
+    if (!messages.length || !listRef.current || prefersReducedMotion()) return undefined;
+    const entries = listRef.current.querySelectorAll('[data-ai-message]');
+    const newest = entries[entries.length - 1];
+    if (!newest) return undefined;
+    const animation = gsap.fromTo(newest, { autoAlpha: 0, y: 8 }, { autoAlpha: 1, y: 0, duration: 0.18, ease: 'power2.out', clearProps: 'transform,opacity,visibility' });
+    return () => animation.revert();
+  }, [messages]);
+
+  useEffect(() => {
+    if (!open || !panelRef.current || prefersReducedMotion()) return undefined;
+    const panel = panelRef.current;
+    const context = gsap.context(() => {
+      gsap.fromTo(panel, { autoAlpha: 0, y: 18, scale: 0.98 }, { autoAlpha: 1, y: 0, scale: 1, duration: 0.28, ease: 'power3.out', clearProps: 'transform,opacity,visibility' });
+      gsap.fromTo('.ai-pixel-mark i', { scale: 0.35, autoAlpha: 0 }, { scale: 1, autoAlpha: 1, duration: 0.2, ease: 'steps(3)', stagger: { each: 0.026, from: 'center' } });
+    }, panel);
+    return () => context.revert();
+  }, [open]);
+
+  useEffect(() => {
+    if (!busy || !thinkingRef.current || prefersReducedMotion()) return undefined;
+    const context = gsap.context(() => {
+      gsap.to('.ai-thinking-pixels i', { y: -4, scale: 1.16, duration: 0.36, ease: 'steps(2)', stagger: { each: 0.07, repeat: -1, yoyo: true, from: 'center' } });
+      gsap.fromTo('.ai-thinking-scan', { scaleX: 0.12, xPercent: -42 }, { scaleX: 1, xPercent: 42, duration: 0.76, ease: 'none', repeat: -1, yoyo: true });
+    }, thinkingRef);
+    return () => context.revert();
+  }, [busy]);
 
   const send = async (event) => {
     event?.preventDefault();
@@ -139,15 +178,17 @@ export default function AiAssistant({ api, settings, canAdmin, onActionComplete,
 
   if (!visible) return null;
 
+  const activeConversation = conversations.find((conversation) => conversation.id === conversationId);
+
   return (
     <>
       <button type="button" className="ai-assistant-trigger" onClick={() => setOpen((current) => !current)} aria-label={open ? 'Close AI assistant' : 'Open AI assistant'} aria-expanded={open}>
         {open ? <X size={22} /> : <Sparkles size={22} />}
       </button>
       {open && (
-        <aside className="ai-assistant-panel" aria-label="AI assistant">
+        <aside className="ai-assistant-panel" ref={panelRef} aria-label="AI assistant">
           <header className="ai-assistant-head">
-            <div><span><Bot size={18} /> AI assistant</span><small>{configured ? `${status?.provider || settings?.aiProvider} · ${status?.model || settings?.aiModel}` : 'Setup required'}</small></div>
+            <div className="ai-assistant-identity"><PixelMark /><div><span><Bot size={18} /> CaddyUI assistant</span><small>{configured ? `${status?.provider || settings?.aiProvider} · ${status?.model || settings?.aiModel}` : 'Setup required'}</small></div></div>
             <button type="button" className="icon-button" onClick={() => setOpen(false)} aria-label="Close AI assistant"><X size={18} /></button>
           </header>
           {!configured ? (
@@ -155,15 +196,17 @@ export default function AiAssistant({ api, settings, canAdmin, onActionComplete,
           ) : (
             <>
               <div className="ai-conversation-toolbar">
-                <label><ChevronDown size={15} /><select value={conversationId} onChange={(event) => setConversationId(event.target.value)} aria-label="AI conversation"><option value="">New conversation</option>{conversations.map((conversation) => <option key={conversation.id} value={conversation.id}>{conversation.title}</option>)}</select></label>
+                <label><span>Thread</span><ChevronDown size={15} /><select value={conversationId} onChange={(event) => setConversationId(event.target.value)} aria-label="AI conversation"><option value="">New conversation</option>{conversations.map((conversation) => <option key={conversation.id} value={conversation.id}>{conversation.title}</option>)}</select></label>
+                {activeConversation && <small className="ai-thread-title" title={activeConversation.title}>{activeConversation.title}</small>}
                 <button type="button" className="icon-button" onClick={createConversation} aria-label="New AI conversation"><MessageSquarePlus size={17} /></button>
                 <button type="button" className="icon-button" onClick={removeConversation} disabled={!conversationId} aria-label="Delete AI conversation"><Trash2 size={17} /></button>
               </div>
               {error && <Notice type="error">{error}</Notice>}
               <div className="ai-message-list" ref={listRef} aria-live="polite">
-                {!messages.length && <div className="ai-welcome"><Sparkles size={24} /><h3>What should I manage?</h3><p>Try: “Create a proxy for app.example.com to 127.0.0.1:3000.”</p></div>}
+                {!messages.length && <div className="ai-welcome"><PixelMark className="ai-welcome-mark" /><Sparkles size={22} /><h3>What should I manage?</h3><p>Start with a real task. This thread will name itself from your first message.</p><span className="ai-welcome-example">Create a proxy for app.example.com</span></div>}
                 {messages.map((message) => (
-                  <div key={message.id} className={`ai-message ${message.role}`}>
+                  <div key={message.id} className={`ai-message ${message.role}`} data-ai-message>
+                    <span className="ai-message-role">{message.role === 'user' ? 'You' : 'CaddyUI'}</span>
                     <div className="ai-message-content">{messageText(message)}</div>
                     {messageProposals(message).map((proposal) => (
                       <div className={`ai-action-card ${proposal.actionType === 'delete_proxy' || proposal.actionType === 'reload_caddy' ? 'danger' : ''}`} key={proposal.id}>
@@ -175,7 +218,7 @@ export default function AiAssistant({ api, settings, canAdmin, onActionComplete,
                     ))}
                   </div>
                 ))}
-                {busy && <div className="ai-message assistant ai-thinking"><Loader2 size={16} className="spin" /> Thinking…</div>}
+                {busy && <div className="ai-thinking" ref={thinkingRef} role="status"><PixelMark className="ai-thinking-pixels" /><div><strong>Reviewing your request</strong><small>Checking the available Caddy context</small></div><i className="ai-thinking-scan" aria-hidden="true" /></div>}
               </div>
               <form className="ai-composer" onSubmit={send}>
                 <textarea value={draft} onChange={(event) => setDraft(event.target.value.slice(0, 8000))} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) send(event); }} placeholder="Ask about or manage proxies…" rows={3} disabled={busy} />

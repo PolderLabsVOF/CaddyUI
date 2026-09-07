@@ -49,7 +49,7 @@ The curl installer is intentionally stable-only. Select **Beta** or **Nightly** 
 | --- | --- |
 | **Proxies** | Create, group, search, enable, and edit reverse-proxy routes. |
 | **Middlewares** | Maintain reusable snippets and route-level building blocks. |
-| **Configuration** | Inspect and edit the complete live Caddy JSON configuration. |
+| **Runtime** | Control live apps, HTTP servers, protocols, lifecycle, metrics, upstream state, TLS/ECH, local PKI, and every JSON module path. |
 | **TLS** | Triage live certificate handshakes, expiry, issuer, SANs, and ACME defaults. |
 | **Logs** | Read discovered Caddy logs and `journalctl` output in one place. |
 | **Access** | Manage local users and `view`, `edit`, and `admin` roles. |
@@ -70,7 +70,9 @@ The curl installer is intentionally stable-only. Select **Beta** or **Nightly** 
     └── update-channel installer
 ```
 
-CaddyUI keeps a working configuration cache for the editor and sends accepted changes to Caddy’s Admin API. In an API-managed installation, start Caddy with `--resume` (the installer enables the packaged `caddy-api.service` when available). Do not later load `/etc/caddy/Caddyfile` through the normal file-managed service: doing so replaces the API-managed configuration.
+CaddyUI’s **Runtime** page reads and writes Caddy’s native JSON directly. Its path editor supports atomic replace, create/append, insert, and delete operations with path-specific ETags to prevent lost updates. The focused forms cover HTTP/1.1, HTTP/2, H2C, HTTP/3, 0-RTT, timeouts, full duplex, and Caddy 2.11 TCP keepalive controls; the remaining stock and third-party module fields stay available through the same JSON tree.
+
+In an API-managed installation, start Caddy with `--resume` (the installer enables the packaged `caddy-api.service` when available). Do not later load `/etc/caddy/Caddyfile` through the normal file-managed service: doing so replaces the API-managed configuration.
 
 A Caddyfile can still be selected during onboarding as a one-time editor bootstrap source. It is not used to reload an API-managed Caddy instance.
 
@@ -108,6 +110,38 @@ The API token is stored server-side; the browser only learns whether one is conf
 
 CaddyUI exposes its authenticated Caddy API bridge below `/api/caddy/*`, including configuration, ID, PKI, and reverse-proxy upstream endpoints. Treat administrator access to CaddyUI as administrator access to your proxy infrastructure.
 
+## Remote MCP access
+
+CaddyUI can expose a remote [Streamable HTTP MCP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) endpoint so an agent can manage the same Caddy configuration through `https://caddyui.example.com/api/mcp`.
+
+Open **Settings → MCP access** to enable the endpoint, create named keys, copy each key once, and revoke keys that are no longer needed. Generated keys are stored only as hashes.
+
+For unattended or break-glass access, you can additionally set a dedicated, high-entropy bearer token in the CaddyUI service environment and restart the service. CaddyUI refuses environment tokens shorter than 32 characters.
+
+```ini
+# systemd override: sudo systemctl edit caddyui
+[Service]
+Environment="CADDYUI_MCP_TOKEN=replace-with-a-random-32-character-minimum-token"
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart caddyui
+```
+
+Connect your remote MCP client to the public HTTPS URL and send the token as a bearer credential:
+
+```json
+{
+  "url": "https://caddyui.example.com/api/mcp",
+  "headers": {
+    "Authorization": "Bearer replace-with-your-mcp-token"
+  }
+}
+```
+
+The MCP endpoint has full CaddyUI administration capability: it can inspect logs and analytics, read and validate the working Caddyfile, apply/reload it, and call the native Caddy Admin API. Keep every token in your agent's secret store, use HTTPS, and revoke or rotate keys immediately when access changes.
+
 ## A minimal route for CaddyUI
 
 ```caddyfile
@@ -133,9 +167,16 @@ Read the [development guide](docs/DEVELOPMENT.md) before opening a change and th
 
 ## Links
 
+- [Source code](https://github.com/PolderLabsVOF/CaddyUI)
 - [Releases](https://github.com/PolderLabsVOF/CaddyUI/releases)
 - [Report a bug or request a feature](https://github.com/PolderLabsVOF/CaddyUI/issues)
 - [Stable installer](https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/main/scripts/install.sh)
+
+## License
+
+CaddyUI is licensed under **GNU AGPL-3.0-only**. You may use, study, copy, modify, and redistribute it under that license. If you modify CaddyUI and make that version available to users over a network, the AGPL requires you to offer those users the corresponding source code under the same license. See [LICENSE](LICENSE) for the complete terms.
+
+Releases and copies already received under the previous MIT license keep the rights granted by that license; the change is not retroactive.
 
 ## Uninstall or reset
 

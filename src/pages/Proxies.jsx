@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { Loader2, RefreshCw, Wand2 } from 'lucide-react';
+import { Loader2, Plus, RefreshCw, Search, Wand2, X } from 'lucide-react';
 import { appendSimpleProxy, parseCaddyfile, setProxyDisabled, updateSimpleProxy } from '../../server/caddyParser.js';
 import {
   ConfirmModal,
@@ -19,9 +19,44 @@ import {
 } from '../components/common.jsx';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
+export const HEALTH_POLL_INTERVAL_MS = 30_000;
 
 const compareText = (a, b) => String(a || '').toLowerCase().localeCompare(String(b || '').toLowerCase());
 const compareBool = (a, b) => Number(Boolean(a)) - Number(Boolean(b));
+
+function applyReverseProxyOptions(block = '', { policy = '', healthUri = '' } = {}) {
+  const lines = String(block).replace(/\r\n/g, '\n').split('\n');
+  const start = lines.findIndex((line) => /^\s*reverse_proxy\b/.test(line));
+  if (start < 0) return block;
+  if (!policy && !healthUri) return block;
+  const baseIndent = (lines[start].match(/^\s*/) || [''])[0];
+  const indent = `${baseIndent}\t`;
+  if (!lines[start].includes('{')) {
+    lines[start] = `${lines[start]} {`;
+    const directives = [policy && `lb_policy ${policy}`, healthUri && `health_uri ${healthUri}`]
+      .filter(Boolean)
+      .map((directive) => `${indent}${directive}`);
+    lines.splice(start + 1, 0, ...directives, `${baseIndent}}`);
+    return lines.join('\n');
+  }
+  let depth = 0; let end = -1;
+  for (let index = start; index < lines.length; index += 1) {
+    depth += (lines[index].match(/\{/g) || []).length - (lines[index].match(/\}/g) || []).length;
+    if (index > start && depth === 0) { end = index; break; }
+  }
+  if (end < 0) return block;
+  const replace = (name, value) => {
+    const found = lines.findIndex((line, index) => index > start && index < end && line.trim().startsWith(`${name} `));
+    // Empty controls preserve the existing directive; removal belongs in the
+    // full Caddyfile editor so a partial update cannot erase configuration.
+    if (!value) return;
+    if (found >= 0) lines[found] = `${indent}${name} ${value}`;
+    else { lines.splice(end, 0, `${indent}${name} ${value}`); end += 1; }
+  };
+  replace('lb_policy', policy);
+  replace('health_uri', healthUri);
+  return lines.join('\n');
+}
 
 function sortValue(site, key, health) {
   if (key === 'domain') return rootDomain(site.addresses?.[0]);
@@ -31,7 +66,6 @@ function sortValue(site, key, health) {
   if (key === 'local') return Boolean(health?.[site.id]?.local?.online);
   if (key === 'category') return site.category || '';
   if (key === 'tags') return (site.tags || []).join(', ');
-  if (key === 'imports') return [...(site.imports || []).map((i) => i.name), ...((site.proxies?.[0]?.imports || []).map((i) => i.name))].join(', ');
   return '';
 }
 
@@ -141,7 +175,7 @@ function TagAutoCompleteInput({ value, onChange, suggestions, placeholder = '' }
   );
 }
 
-export default function Proxies({ config, refresh, setConfig, canEdit, theme, health, loading, api, onConfigChanged }) {
+export default function Proxies({ config, refresh, refreshHealth, setConfig, canEdit, theme, health, loading, api, onConfigChanged }) {
   const empty = { host: '', upstream: '', description: '', category: '', tags: '', imports: '', logMode: 'none', logPath: '' };
   const [form, setForm] = useState(empty);
   const [edit, setEdit] = useState(null);
@@ -153,6 +187,13 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [renderLimits, setRenderLimits] = useState({});
+  const [showCreate, setShowCreate] = useState(false);
+
+  useEffect(() => {
+    if (localTest || !refreshHealth) return undefined;
+    const interval = window.setInterval(refreshHealth, HEALTH_POLL_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [refreshHealth]);
 
   const sites = config?.parsed?.sites || [];
   const snippets = config?.parsed?.snippets || [];
@@ -263,12 +304,14 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
       if (localTest) {
         applyLocal(appendSimpleProxy(config.content, payload));
         setForm(empty);
+        setShowCreate(false);
         return;
       }
       const data = await api('/api/proxies', { method: 'POST', body: JSON.stringify(payload) });
       setConfig((current) => ({ ...current, content: data.content, parsed: data.parsed, health: data.health || current.health }));
       onConfigChanged?.('Proxy added.');
       setForm(empty);
+      setShowCreate(false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -338,7 +381,10 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
       logMode: logging.mode,
       logPath: logging.path,
       disabled: Boolean(site.disabled),
+      tab: 'overview',
       rawOpen: false,
+      advancedPolicy: '',
+      advancedHealthUri: '',
       rawBlock: readBlockAtLine(config.content, site.line),
     });
   };
@@ -364,11 +410,13 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
         }
         lines.splice(start, end - start + 1);
         applyLocal(lines.join('\n').replace(/\n{3,}/g, '\n\n'));
+        setEdit(null);
         return;
       }
       const data = await api(`/api/proxies/${site.line}`, { method: 'DELETE' });
       setConfig((current) => ({ ...current, content: data.content, parsed: data.parsed, health: data.health || current.health }));
       onConfigChanged?.('Proxy deleted.');
+      setEdit(null);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -419,6 +467,7 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
             </select>
           </label>
           <button onClick={refresh}><RefreshCw size={16} /> Refresh</button>
+          {canEdit && <button className="primary" onClick={() => setShowCreate((current) => !current)}><Plus size={16} />{showCreate ? 'Close creator' : 'Add proxy'}</button>}
         </div>
       </div>
 
@@ -433,41 +482,42 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
       )}
 
       <div className="proxy-search">
-        <input placeholder="Search proxies" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <span>{filteredSites.length} shown</span>
+        <div className="proxy-search-field"><Search size={17} aria-hidden="true" /><input aria-label="Search proxies" placeholder="Search host, upstream, tag, category, or middleware" value={search} onChange={(e) => setSearch(e.target.value)} />{search && <button type="button" className="proxy-search-clear" onClick={() => setSearch('')} aria-label="Clear proxy search"><X size={15} /></button>}</div>
+        <span>{filteredSites.length} {filteredSites.length === 1 ? 'proxy' : 'proxies'} shown</span>
       </div>
 
       {error && <Notice type="error">{error}</Notice>}
 
-      {canEdit && (
+      {canEdit && showCreate && (
         <form className="quick-add" onSubmit={add}>
-          <input list="proxy-domain-suggestions" placeholder="new.example.com" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} />
+          <div className="quick-add-head"><div><strong>Create proxy</strong><span>Point a hostname at an upstream. Organization and logging are optional.</span></div><button type="button" className="icon-button" onClick={() => setShowCreate(false)} aria-label="Close proxy creator"><X size={17} /></button></div>
+          <input className="quick-add-host" aria-label="Proxy hostname" list="proxy-domain-suggestions" placeholder="Hostname · app.example.com" required value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} />
           <datalist id="proxy-domain-suggestions">
             {domains.flatMap((domain) => [`caddyui.${domain}`, `app.${domain}`, domain]).map((host) => <option key={host} value={host} />)}
           </datalist>
-          <input placeholder="http://10.0.0.10:3000" value={form.upstream} onChange={(e) => setForm({ ...form, upstream: e.target.value })} />
-          <input className="proxy-description-input" placeholder="short description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <AutoCompleteInput
+          <input className="quick-add-upstream" aria-label="Upstream address" placeholder="Upstream · http://10.0.0.10:3000" required value={form.upstream} onChange={(e) => setForm({ ...form, upstream: e.target.value })} />
+          <input className="proxy-description-input quick-add-description" aria-label="Proxy description" placeholder="Description · internal dashboard" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <div className="quick-add-category"><AutoCompleteInput
             value={form.category}
             placeholder="category"
             suggestions={categories}
             onChange={(next) => setForm({ ...form, category: next })}
-          />
-          <TagAutoCompleteInput
+          /></div>
+          <div className="quick-add-tags"><TagAutoCompleteInput
             value={form.tags}
             placeholder="tags: prod, internal"
             suggestions={allTags}
             onChange={(next) => setForm({ ...form, tags: next })}
-          />
-          <select value={form.logMode} onChange={(e) => setForm({ ...form, logMode: e.target.value })}>
+          /></div>
+          <select className="quick-add-log" aria-label="Access logging" value={form.logMode} onChange={(e) => setForm({ ...form, logMode: e.target.value })}>
             <option value="none">No access log</option>
             <option value="default">Default log</option>
             <option value="stdout">Log to stdout</option>
             <option value="stderr">Log to stderr</option>
             <option value="file">Log to file</option>
           </select>
-          {form.logMode === 'file' && <input placeholder="/var/log/caddy/site.access.log" value={form.logPath} onChange={(e) => setForm({ ...form, logPath: e.target.value })} />}
-          <button className="primary" disabled={busy}>{busy ? <Loader2 className="spin" /> : <Wand2 size={16} />}Add proxy</button>
+          {form.logMode === 'file' && <input className="quick-add-log-path" aria-label="Access log file" placeholder="/var/log/caddy/site.access.log" value={form.logPath} onChange={(e) => setForm({ ...form, logPath: e.target.value })} />}
+          <button className="primary quick-add-submit" disabled={busy}>{busy ? <Loader2 className="spin" /> : <Wand2 size={16} />}Add proxy</button>
           <MiddlewarePicker snippets={snippets} value={form.imports} onChange={(imports) => setForm({ ...form, imports })} />
         </form>
       )}
@@ -476,10 +526,13 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
         <div className="modal-backdrop" onMouseDown={() => setEdit(null)}>
           <form className="edit-modal proxy-edit-modal" onSubmit={saveEdit} onMouseDown={(e) => e.stopPropagation()}>
             <div className="modal-head">
-              <h3>Edit proxy</h3>
+              <div><h3>{edit.host || 'Untitled proxy'}</h3><p>{edit.disabled ? 'Disabled — enable it before traffic can reach this upstream.' : `Routes to ${edit.upstream || 'an upstream'}`}</p></div>
               <button type="button" onClick={() => setEdit(null)}>Close</button>
             </div>
-            <div className="proxy-edit-layout">
+            <div className="modal-context"><span className={edit.disabled ? 'status-off' : 'status-on'}>{edit.disabled ? 'Disabled' : 'Live'}</span><span>{edit.imports ? `${edit.imports.split(',').filter(Boolean).length} middleware imports` : 'No middleware imports'}</span><span>{edit.logMode === 'none' ? 'Logging off' : `Logging: ${edit.logMode}`}</span></div>
+            <div className="config-mode-tabs" role="tablist" aria-label="Proxy configuration"><button type="button" role="tab" aria-selected={edit.tab === 'overview'} className={edit.tab === 'overview' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'overview', rawOpen: false }))}>Connection</button><button type="button" role="tab" aria-selected={edit.tab === 'routing'} className={edit.tab === 'routing' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'routing', rawOpen: false }))}>Routing</button><button type="button" role="tab" aria-selected={edit.tab === 'operations'} className={edit.tab === 'operations' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'operations', rawOpen: false }))}>Operations</button><button type="button" role="tab" aria-selected={edit.tab === 'advanced'} className={edit.tab === 'advanced' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'advanced', rawOpen: true, rawBlock: previewProxyBlock(config.content, current) }))}>Advanced Caddyfile</button></div>
+            {edit.tab !== 'advanced' ? <div className="proxy-edit-layout">
+              {edit.tab === 'overview' &&
               <section className="proxy-edit-card">
                 <h4>Connection</h4>
                 <label>
@@ -495,6 +548,8 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
                   <textarea rows="3" value={edit.description} onChange={(e) => { const next = { ...edit, description: e.target.value }; if (next.rawOpen) next.rawBlock = previewProxyBlock(config.content, next); setEdit(next); }} placeholder="What this proxy is for" />
                 </label>
               </section>
+              }
+              {edit.tab === 'routing' &&
               <section className="proxy-edit-card">
                 <h4>Organization</h4>
                 <label>
@@ -527,6 +582,8 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
                   <MiddlewarePicker snippets={snippets} value={edit.imports} onChange={(imports) => { const next = { ...edit, imports }; if (next.rawOpen) next.rawBlock = previewProxyBlock(config.content, next); setEdit(next); }} />
                 </div>
               </section>
+              }
+              {edit.tab === 'operations' &&
               <section className="proxy-edit-card">
                 <h4>Logging</h4>
                 <label>
@@ -545,15 +602,21 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
                     <input value={edit.logPath} onChange={(e) => { const next = { ...edit, logPath: e.target.value }; if (next.rawOpen) next.rawBlock = previewProxyBlock(config.content, next); setEdit(next); }} />
                   </label>
                 )}
+                <label className="proxy-enabled-toggle"><input type="checkbox" checked={!edit.disabled} onChange={(event) => setEdit((current) => ({ ...current, disabled: !event.target.checked }))} />Enable this proxy</label>
               </section>
-            </div>
-            <button type="button" className="expand-toggle" onClick={() => { const nextOpen = !edit.rawOpen; const next = { ...edit, rawOpen: nextOpen }; if (nextOpen) next.rawBlock = previewProxyBlock(config.content, next); setEdit(next); }}>
-              {edit.rawOpen ? 'Hide raw config' : 'Edit raw config'}
-            </button>
-            {edit.rawOpen && (
-              <div className="raw-proxy-editor">
+              }
+            </div> : (
+              <section className="proxy-advanced-editor">
+                <div><h4>Full proxy block</h4><p>Use any Caddyfile directive here—matchers, transports, header rules, load balancing, health checks, and more. The complete block is validated before it is applied.</p></div>
+                <div className="proxy-advanced-controls">
+                  <label>Load-balancing policy<select value={edit.advancedPolicy} onChange={(event) => setEdit((current) => ({ ...current, advancedPolicy: event.target.value }))}><option value="">Keep current policy</option><option value="round_robin">round_robin</option><option value="least_conn">least_conn</option><option value="random_choice">random_choice</option><option value="first">first</option><option value="ip_hash">ip_hash</option><option value="uri_hash">uri_hash</option></select></label>
+                  <label>Active health-check path<input value={edit.advancedHealthUri} onChange={(event) => setEdit((current) => ({ ...current, advancedHealthUri: event.target.value }))} placeholder="/healthz" /></label>
+                  <button type="button" onClick={() => setEdit((current) => ({ ...current, rawOpen: true, rawBlock: applyReverseProxyOptions(current.rawBlock || previewProxyBlock(config.content, current), { policy: current.advancedPolicy, healthUri: current.advancedHealthUri }) }))}>Apply to Caddyfile</button>
+                </div>
+                <div className="raw-proxy-editor">
                 <Editor height="360px" defaultLanguage="caddyfile" theme={theme === 'light' ? 'light' : 'vs-dark'} value={edit.rawBlock} onChange={(value) => setEdit({ ...edit, rawBlock: value || '' })} options={{ minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', scrollBeyondLastLine: false }} />
-              </div>
+                </div>
+              </section>
             )}
             <div className="toolbar">
               <button className="primary" disabled={busy}>Save</button>
@@ -586,10 +649,8 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
                 <button type="button" className={`table-sort ${sort.key === 'host' ? 'active' : ''}`} onClick={() => toggleSort('host')}>Host{sortArrow('host')}</button>
                 <button type="button" className={`table-sort ${sort.key === 'upstream' ? 'active' : ''}`} onClick={() => toggleSort('upstream')}>Upstream{sortArrow('upstream')}</button>
                 <button type="button" className={`table-sort ${sort.key === 'local' ? 'active' : ''}`} onClick={() => toggleSort('local')}>Local{sortArrow('local')}</button>
-                <span>State</span>
                 <button type="button" className={`table-sort ${sort.key === 'category' ? 'active' : ''}`} onClick={() => toggleSort('category')}>Category{sortArrow('category')}</button>
                 <button type="button" className={`table-sort ${sort.key === 'tags' ? 'active' : ''}`} onClick={() => toggleSort('tags')}>Tags{sortArrow('tags')}</button>
-                <button type="button" className={`table-sort ${sort.key === 'imports' ? 'active' : ''}`} onClick={() => toggleSort('imports')}>Imports{sortArrow('imports')}</button>
                 <span>Actions</span>
               </div>
               {items.slice(0, renderLimits[groupName] || 0).map((site) => (
@@ -603,11 +664,20 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
                   onDelete={(e) => setConfirmDelete(deleteConfirm(e, 'Delete proxy', site.addresses[0], () => deleteProxy(site)))}
                 />
               ))}
-              {(renderLimits[groupName] || 0) < items.length && <div className="proxy-row-skeleton"><span /><span /><span /><span /><span /><span /><span /><span /></div>}
+              {(renderLimits[groupName] || 0) < items.length && <div className="proxy-row-skeleton"><span /><span /><span /><span /><span /><span /><span /></div>}
             </details>
           );
         })}
+        {!loading && groupedEntries.length === 0 && <div className="proxy-empty-state">
+          <ServerEmptyIllustration />
+          <div><h3>{query ? 'No matching proxies' : 'No proxies configured'}</h3><p>{query ? 'Try a different hostname, upstream, tag, or category.' : 'Create your first reverse proxy to start routing traffic through Caddy.'}</p></div>
+          {query ? <button type="button" onClick={() => setSearch('')}>Clear search</button> : canEdit ? <button type="button" className="primary" onClick={() => setShowCreate(true)}><Plus size={16} />Create proxy</button> : null}
+        </div>}
       </div>
     </section>
   );
+}
+
+function ServerEmptyIllustration() {
+  return <div className="proxy-empty-visual" aria-hidden="true"><span /><span /><span /></div>;
 }
