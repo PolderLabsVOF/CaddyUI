@@ -781,8 +781,7 @@ else
   ok "Started in the background"
 fi
 wait_for_app
-setup_caddy_proxy
-prompt_caddy_reload
+warn "CaddyUI does not modify a Caddyfile in API mode. Open the local onboarding URL below, then create its reverse proxy through CaddyUI after onboarding."
 
 IP="$(primary_ip)"
 URL="http://$IP:$PORT"

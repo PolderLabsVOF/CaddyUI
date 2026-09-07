@@ -826,7 +826,7 @@ function updateGlobalTlsSettings(content = '', values = {}) {
     try { parsed = new URL(acmeCa); } catch { throw new Error('ACME CA must be a valid HTTPS URL.'); }
     if (parsed.protocol !== 'https:') throw new Error('ACME CA must use HTTPS.');
   }
-  const { lines, start, end } = globalOptionsBounds(content);
+  const { lines, start } = globalOptionsBounds(content);
   const directives = [['email', email], ['acme_ca', acmeCa]];
   if (start < 0) {
     const body = directives.filter(([, value]) => value).map(([name, value]) => `\t${name} ${value}`);
@@ -835,10 +835,11 @@ function updateGlobalTlsSettings(content = '', values = {}) {
   }
   const next = [...lines];
   for (const [name, value] of directives) {
-    const index = next.findIndex((line, lineIndex) => lineIndex > start && lineIndex < end && new RegExp(`^\\s*${name}\\s+`).test(line.replace(/#.*/, '')));
+    const currentEnd = next.findIndex((line, lineIndex) => lineIndex > start && line.replace(/#.*/, '').trim() === '}');
+    const index = next.findIndex((line, lineIndex) => lineIndex > start && lineIndex < currentEnd && new RegExp(`^\\s*${name}\\s+`).test(line.replace(/#.*/, '')));
     if (index >= 0 && value) next[index] = `\t${name} ${value}`;
     else if (index >= 0) next.splice(index, 1);
-    else if (value) next.splice(end, 0, `\t${name} ${value}`);
+    else if (value && currentEnd >= 0) next.splice(currentEnd, 0, `\t${name} ${value}`);
   }
   return next.join('\n');
 }
