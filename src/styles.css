@@ -1170,6 +1170,16 @@ label {
 .tls-settings label { display: grid; gap: 6px; color: var(--text); font-size: 12px; font-weight: 750; }
 .tls-settings input { width: 100%; }
 .tls-help { margin: -2px 0 1px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.tls-automation-state { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; color: var(--ok); font-size: 13px; }
+.tls-automation-state .tls-status-dot { flex: none; }
+.tls-policy-list { display: grid; gap: 8px; margin-top: 13px; }
+.tls-policy { display: grid; gap: 3px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+.tls-policy strong, .tls-authority-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.tls-policy span, .tls-policy small, .tls-authority-row small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.tls-authority-row { display: grid; grid-template-columns: 9px minmax(0, 1fr); align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.tls-authority-row:last-child { border-bottom: 0; }
+.tls-authority-row > span:last-child { display: grid; gap: 3px; min-width: 0; }
+.tls-status-dot.failed { background: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 13%, transparent); }
 .empty-state { display: inline-flex; align-items: center; gap: 8px; margin: 20px 0 4px; color: var(--muted); font-size: 13px; }
 
 @media (max-width: 1000px) {

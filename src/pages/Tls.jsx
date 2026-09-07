@@ -75,6 +75,20 @@ export default function Tls({ api, canAdmin, setConfig, onConfigChanged }) {
   const selected = certificates.find((certificate) => certificate.host === selectedHost)
     || visibleCertificates[0]
     || null;
+  const authorities = useMemo(() => {
+    const grouped = new Map();
+    for (const certificate of certificates) {
+      const issuer = certificate.certificate?.issuer?.O
+        || certificate.certificate?.issuer?.CN
+        || 'Unknown certificate authority';
+      const current = grouped.get(issuer) || { issuer, total: 0, healthy: 0, failed: 0 };
+      current.total += 1;
+      if (certificate.ok && certificate.authorized) current.healthy += 1;
+      if (!certificate.ok) current.failed += 1;
+      grouped.set(issuer, current);
+    }
+    return [...grouped.values()].sort((a, b) => b.total - a.total || a.issuer.localeCompare(b.issuer));
+  }, [certificates]);
 
   const save = async (event) => {
     event.preventDefault();
@@ -154,6 +168,35 @@ export default function Tls({ api, canAdmin, setConfig, onConfigChanged }) {
       </section>
 
       <aside className="tls-side">
+        <section className="tls-panel tls-automation">
+          <div className="tls-panel-head"><div><h2>Caddy automatic HTTPS</h2><p>Live TLS automation state from Caddy’s Admin API.</p></div><ShieldCheck size={20} /></div>
+          {!data?.automation && <p className="tls-help">Caddy did not return a TLS automation app. Automatic certificate management may be disabled or the Admin API is unavailable.</p>}
+          {data?.automation && <>
+            <div className="tls-automation-state"><span className="tls-status-dot" /><strong>Automation app active</strong></div>
+            <dl className="tls-details-list">
+              <div><dt>Policies</dt><dd>{Array.isArray(data.automation.policies) ? data.automation.policies.length : 0}</dd></div>
+              <div><dt>Storage</dt><dd className="mono">{formatTlsValue(data.automation.storage || data.automation.storage_clean_interval || 'Caddy default')}</dd></div>
+              <div><dt>On-demand TLS</dt><dd>{data.automation.on_demand ? 'Enabled' : 'Not configured'}</dd></div>
+            </dl>
+            {Array.isArray(data.automation.policies) && data.automation.policies.length > 0 && <div className="tls-policy-list">
+              {data.automation.policies.map((policy, index) => <div className="tls-policy" key={`${policy.name || 'policy'}-${index}`}>
+                <strong>{policy.name || `Policy ${index + 1}`}</strong>
+                <span>{Array.isArray(policy.subjects) && policy.subjects.length ? policy.subjects.join(', ') : 'All eligible hostnames'}</span>
+                <small>{formatIssuers(policy.issuers)}</small>
+              </div>)}
+            </div>}
+          </>}
+        </section>
+
+        <section className="tls-panel tls-authorities">
+          <div className="tls-panel-head"><div><h2>Certificate authorities</h2><p>Issuers observed in the live certificate checks.</p></div></div>
+          {authorities.length === 0 && <p className="empty-state">No certificate authority data is available yet.</p>}
+          {authorities.map((authority) => <div className="tls-authority-row" key={authority.issuer}>
+            <span className={`tls-status-dot ${authority.failed ? 'failed' : ''}`} />
+            <span><strong>{authority.issuer}</strong><small>{authority.healthy}/{authority.total} certificates healthy</small></span>
+          </div>)}
+        </section>
+
         <section className="tls-panel tls-detail">
           <div className="tls-panel-head"><div><h2>Certificate details</h2><p>{selected?.host || 'Choose a hostname'}</p></div></div>
           {selected ? <CertificateDetails certificate={selected} /> : <p className="empty-state">Select a hostname to inspect its certificate.</p>}
@@ -172,6 +215,17 @@ export default function Tls({ api, canAdmin, setConfig, onConfigChanged }) {
       </aside>
     </div>
   </section>;
+}
+
+function formatTlsValue(value) {
+  if (typeof value === 'string') return value;
+  if (value === undefined || value === null) return 'Not configured';
+  try { return JSON.stringify(value); } catch { return String(value); }
+}
+
+function formatIssuers(issuers) {
+  if (!Array.isArray(issuers) || issuers.length === 0) return 'Caddy default certificate issuers';
+  return issuers.map((issuer) => typeof issuer === 'string' ? issuer : issuer?.module || issuer?.name || 'Custom issuer').join(', ');
 }
 
 function CertificateDetails({ certificate }) {
