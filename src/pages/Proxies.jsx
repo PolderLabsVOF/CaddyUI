@@ -441,33 +441,33 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
 
       {canEdit && (
         <form className="quick-add" onSubmit={add}>
-          <input list="proxy-domain-suggestions" placeholder="new.example.com" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} />
+          <input className="quick-add-host" aria-label="Proxy hostname" list="proxy-domain-suggestions" placeholder="new.example.com" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} />
           <datalist id="proxy-domain-suggestions">
             {domains.flatMap((domain) => [`caddyui.${domain}`, `app.${domain}`, domain]).map((host) => <option key={host} value={host} />)}
           </datalist>
-          <input placeholder="http://10.0.0.10:3000" value={form.upstream} onChange={(e) => setForm({ ...form, upstream: e.target.value })} />
-          <input className="proxy-description-input" placeholder="short description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <AutoCompleteInput
+          <input className="quick-add-upstream" aria-label="Upstream address" placeholder="http://10.0.0.10:3000" value={form.upstream} onChange={(e) => setForm({ ...form, upstream: e.target.value })} />
+          <input className="proxy-description-input quick-add-description" aria-label="Proxy description" placeholder="short description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <div className="quick-add-category"><AutoCompleteInput
             value={form.category}
             placeholder="category"
             suggestions={categories}
             onChange={(next) => setForm({ ...form, category: next })}
-          />
-          <TagAutoCompleteInput
+          /></div>
+          <div className="quick-add-tags"><TagAutoCompleteInput
             value={form.tags}
             placeholder="tags: prod, internal"
             suggestions={allTags}
             onChange={(next) => setForm({ ...form, tags: next })}
-          />
-          <select value={form.logMode} onChange={(e) => setForm({ ...form, logMode: e.target.value })}>
+          /></div>
+          <select className="quick-add-log" aria-label="Access logging" value={form.logMode} onChange={(e) => setForm({ ...form, logMode: e.target.value })}>
             <option value="none">No access log</option>
             <option value="default">Default log</option>
             <option value="stdout">Log to stdout</option>
             <option value="stderr">Log to stderr</option>
             <option value="file">Log to file</option>
           </select>
-          {form.logMode === 'file' && <input placeholder="/var/log/caddy/site.access.log" value={form.logPath} onChange={(e) => setForm({ ...form, logPath: e.target.value })} />}
-          <button className="primary" disabled={busy}>{busy ? <Loader2 className="spin" /> : <Wand2 size={16} />}Add proxy</button>
+          {form.logMode === 'file' && <input className="quick-add-log-path" aria-label="Access log file" placeholder="/var/log/caddy/site.access.log" value={form.logPath} onChange={(e) => setForm({ ...form, logPath: e.target.value })} />}
+          <button className="primary quick-add-submit" disabled={busy}>{busy ? <Loader2 className="spin" /> : <Wand2 size={16} />}Add proxy</button>
           <MiddlewarePicker snippets={snippets} value={form.imports} onChange={(imports) => setForm({ ...form, imports })} />
         </form>
       )}

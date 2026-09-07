@@ -45,6 +45,11 @@ const api = async (path, options = {}) => {
 
 const canEditRole = (role) => role === 'edit' || role === 'admin';
 const canAdminRole = (role) => role === 'admin';
+const PAGE_IDS = new Set(['proxies', 'middlewares', 'configuration', 'tls', 'logs', 'settings']);
+const pageFromHash = () => {
+  const candidate = window.location.hash.replace(/^#\/?/, '').trim();
+  return PAGE_IDS.has(candidate) ? candidate : 'proxies';
+};
 const UPDATE_STEPS = [
   ['target', 'Checking target'],
   ['queued', 'Starting installer'],
@@ -82,7 +87,7 @@ export default function App() {
   const [settings, setSettings] = useState(localTest ? localSettings : null);
   const [config, setConfig] = useState(localTest ? emptyConfig : null);
   const [health, setHealth] = useState(localTest ? {} : {});
-  const [page, setPage] = useState('proxies');
+  const [page, setPage] = useState(pageFromHash);
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('caddyui-theme') || 'dark');
   const [error, setError] = useState('');
@@ -158,6 +163,11 @@ export default function App() {
   };
 
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('caddyui-theme', theme); }, [theme]);
+  useEffect(() => {
+    const onHashChange = () => setPage(pageFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
   useEffect(() => {
     if (!updating) return undefined;
     const started = Date.now();
@@ -250,6 +260,12 @@ export default function App() {
   if (!localTest && (!status.authenticated || !settings?.configured)) return <AuthGate status={status} onReady={(data) => { setStatus((prev) => ({ ...prev, ...data, settings: data.settings, authenticated: true, discovered: data.discovered || prev?.discovered })); setSettings(data.settings); if (data.settings.configured) { refreshConfig(); refreshAppStatus(false); } }} api={api} />;
 
   const logout = async () => { if (localTest) { location.reload(); return; } await api('/api/logout', { method: 'POST' }); location.reload(); };
+  const navigatePage = (nextPage) => {
+    if (!PAGE_IDS.has(nextPage)) return;
+    setPage(nextPage);
+    window.history.pushState(null, '', `#/${nextPage}`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const checkUpdates = async () => {
     setCheckingUpdates(true);
     try {
@@ -372,7 +388,7 @@ export default function App() {
   return (
     <Shell
       page={page}
-      setPage={setPage}
+      setPage={navigatePage}
       collapsed={collapsed}
       setCollapsed={setCollapsed}
       user={settings.username}
@@ -468,7 +484,7 @@ export default function App() {
         settings={settings}
         canAdmin={canAdmin}
         notify={pushNotification}
-        onOpenSettings={() => setPage('settings')}
+        onOpenSettings={() => navigatePage('settings')}
         onActionComplete={(result) => {
           if (result?.parsed) setConfig((current) => ({ ...current, parsed: result.parsed }));
           refreshConfig();

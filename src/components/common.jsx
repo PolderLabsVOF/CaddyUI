@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, Menu, MessageSquare, Moon, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, LogOut, Menu, MessageSquare, Moon, RefreshCw, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun, X } from 'lucide-react';
 import { updateSimpleProxy } from '../../server/caddyParser.js';
 
 export const pageItems = [
@@ -16,6 +16,7 @@ export function Notice({ type = 'info', children }) {
 }
 
 export function Shell({ children, page, setPage, collapsed, setCollapsed, user, onLogout, theme, setTheme, appInfo, onCheckUpdates, onRunUpdate, canUpdate, checkingUpdates, updating, canEdit, onValidateCaddy, onConfirmReloadCaddy, caddyBusy, appVersion, notifications = [], onDismissNotification, onNotificationAction, onClearNotifications }) {
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const activeVersion = appInfo?.version || appInfo?.localVersion || appVersion;
   const targetVersion = appInfo?.availableVersion || appInfo?.remoteVersion || '';
   const shownVersion = updating && targetVersion ? targetVersion : activeVersion;
@@ -24,15 +25,17 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
   };
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <header className="topbar">
         <div className="brand">
-          <button className="icon-button" onClick={() => setCollapsed(!collapsed)}>
+          <button className="icon-button sidebar-toggle" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}>
             {collapsed ? <Menu /> : <SidebarClose />}
           </button>
-          <span className="logo">CaddyUI</span>
+          <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
+          <span className="logo">Caddy<span>UI</span></span>
           <span className="app-version">v{shownVersion}</span>
         </div>
-        <div className="top-actions">
+        <div className="top-actions desktop-actions">
           {canEdit && (
             <>
               <button onClick={onValidateCaddy} disabled={caddyBusy}>Validate</button>
@@ -50,7 +53,21 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
           </button>
           <button onClick={onLogout}>Logout</button>
         </div>
+        <button type="button" className="icon-button mobile-actions-toggle" aria-label="Open quick actions" aria-expanded={mobileActionsOpen} onClick={() => setMobileActionsOpen(true)}><Menu size={20} /></button>
       </header>
+      {mobileActionsOpen && <div className="mobile-actions-backdrop" onMouseDown={() => setMobileActionsOpen(false)}>
+        <aside className="mobile-actions-sheet" aria-label="Quick actions" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="mobile-actions-head"><div><span className="eyebrow">Signed in</span><strong>{user || 'user'}</strong></div><button type="button" className="icon-button" onClick={() => setMobileActionsOpen(false)} aria-label="Close quick actions"><X size={19} /></button></div>
+          {canEdit && <div className="mobile-action-grid">
+            <button onClick={() => { onValidateCaddy(); setMobileActionsOpen(false); }} disabled={caddyBusy}><CheckCircle2 size={18} />Validate config</button>
+            <button onClick={() => { onConfirmReloadCaddy(); setMobileActionsOpen(false); }} disabled={caddyBusy}><RefreshCw size={18} />Reload Caddy</button>
+          </div>}
+          <button className="mobile-action-row" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}Use {theme === 'light' ? 'dark' : 'light'} theme</button>
+          <button className="mobile-action-row" onClick={onCheckUpdates} disabled={checkingUpdates || updating}><RefreshCw size={18} />{checkingUpdates ? 'Checking for updates…' : `Check updates · v${shownVersion}`}</button>
+          {canUpdate && appInfo?.updateAvailable && <button className="mobile-action-row primary" onClick={() => { onRunUpdate(); setMobileActionsOpen(false); }} disabled={updating}>Update to v{targetVersion}</button>}
+          <button className="mobile-action-row danger" onClick={onLogout}><LogOut size={18} />Sign out</button>
+        </aside>
+      </div>}
       {notifications.length > 0 && (
         <div className="toast-stack" role="status" aria-live="polite">
           {notifications.length > 1 && (
@@ -135,8 +152,8 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
           </div>
         </div>
       </aside>
-      <main className={`content ${collapsed ? 'wide' : ''}`}>{children}</main>
-      <nav className="mobile-nav">
+      <main id="main-content" className={`content ${collapsed ? 'wide' : ''}`}>{children}</main>
+      <nav className="mobile-nav" aria-label="Primary navigation">
         {pageItems.map(([id, Icon, label]) => (
           <button key={id} className={page === id ? 'active' : ''} onClick={() => setPage(id)}>
             <Icon size={18} />
