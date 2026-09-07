@@ -27,6 +27,10 @@
           <h1>A clearer way to run Caddy.</h1>
           <p class="hero-lede">Manage reverse proxies, reusable middleware, TLS, logs, users, and the live Caddy runtime from one focused interface.</p>
           <div class="hero-actions"><a class="button primary-button" href="#install">Install CaddyUI</a><a class="button secondary-button" href="https://github.com/PolderLabsVOF/CaddyUI">View on GitHub</a></div>
+          <div class="hero-command" aria-label="Stable install command">
+            <code><span>$</span> curl -fsSL https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/main/scripts/install.sh | bash</code>
+            <button class="copy-button" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/main/scripts/install.sh | bash" aria-label="Copy full installation command">Copy</button>
+          </div>
           <ul class="hero-points" aria-label="Project qualities"><li>Open source</li><li>Runs on your host</li><li>No cloud account</li></ul>
         </div>
 
@@ -60,14 +64,23 @@
       <section class="feature-section" id="features">
         <div class="section-heading"><div><p class="kicker">Everything in one place</p><h2>Daily Caddy operations, without the scavenger hunt.</h2></div><p>CaddyUI keeps common work approachable and leaves the complete runtime available when you need the detail.</p></div>
         <div class="feature-list">
-          <article><span>⌘</span><div><h3>Reverse proxies</h3><p>Create, group, search, enable, and edit routes. See upstream health beside the configuration it belongs to.</p></div></article>
-          <article><span>◇</span><div><h3>Reusable middleware</h3><p>Maintain shared snippets and route-level building blocks without copying directives between sites.</p></div></article>
-          <article><span>⌁</span><div><h3>Live runtime</h3><p>Inspect the active Caddy JSON, runtime IDs, PKI, and reverse-proxy upstreams through the Admin API.</p></div></article>
-          <article><span>♢</span><div><h3>TLS inventory</h3><p>Review handshakes, expiry, issuer, SANs, fingerprints, and global ACME defaults in one view.</p></div></article>
-          <article><span>▤</span><div><h3>Logs and journal</h3><p>Read discovered Caddy logs and journal output without switching tools or losing operational context.</p></div></article>
-          <article><span>◎</span><div><h3>Users and roles</h3><p>Give local users view, edit, or admin access. Sensitive API credentials remain on the server.</p></div></article>
-          <article><span>✓</span><div><h3>Safer changes</h3><p>Validate before applying, reload deliberately, and receive clear feedback when Caddy rejects a change.</p></div></article>
-          <article><span>↻</span><div><h3>Managed updates</h3><p>Stay on stable for production or explicitly select beta and nightly builds from the update controls.</p></div></article>
+          <article><div class="feature-top"><span>⌘</span><h3>Reverse proxies</h3></div><p>Create, group, search, enable, and edit routes. See upstream health beside the configuration it belongs to.</p><div class="mini-routes" aria-hidden="true"><i></i><b>app.example.com</b><small>10.0.0.8:3000</small><i></i><b>api.example.com</b><small>10.0.0.9:8080</small></div></article>
+          <article><div class="feature-top"><span>◇</span><h3>Reusable middleware</h3></div><p>Maintain shared snippets and route-level building blocks without copying directives between sites.</p><div class="mini-pills" aria-hidden="true"><i>security_headers</i><i>forward_auth</i><i>rate_limit</i></div></article>
+          <article><div class="feature-top"><span>⌁</span><h3>Live runtime</h3></div><p>Inspect the active Caddy JSON, runtime IDs, PKI, and reverse-proxy upstreams through the Admin API.</p><div class="mini-tree" aria-hidden="true"><span>▾ apps</span><span>　▾ http</span><span>　　▸ servers <b>2</b></span></div></article>
+          <article><div class="feature-top"><span>♢</span><h3>TLS inventory</h3></div><p>Review handshakes, expiry, issuer, SANs, fingerprints, and global ACME defaults in one view.</p><div class="mini-cert" aria-hidden="true"><div><i></i><span>Healthy</span><b>12</b></div><div><i></i><span>Expiring soon</span><b>1</b></div></div></article>
+          <article><div class="feature-top"><span>▤</span><h3>Logs and journal</h3></div><p>Read discovered Caddy logs and journal output without switching tools or losing operational context.</p><div class="mini-logs" aria-hidden="true"><span><i>INFO</i> Caddy started</span><span><i>WARN</i> Renewal delayed</span></div></article>
+          <article><div class="feature-top"><span>◎</span><h3>Users and roles</h3></div><p>Give local users view, edit, or admin access. Sensitive API credentials remain on the server.</p><div class="mini-users" aria-hidden="true"><span>ops@example <i>admin</i></span><span>monitoring <i>view</i></span></div></article>
+          <article><div class="feature-top"><span>✓</span><h3>Safer changes</h3></div><p>Validate before applying, reload deliberately, and receive clear feedback when Caddy rejects a change.</p><div class="mini-checks" aria-hidden="true"><span><i>✓</i> Validate configuration</span><span><i>✓</i> Apply through Admin API</span></div></article>
+          <article><div class="feature-top"><span>↻</span><h3>Managed updates</h3></div><p>Stay on stable for production or explicitly select beta and nightly builds from the update controls.</p><div class="mini-channels" aria-hidden="true"><span class="active">Stable</span><span>Beta</span><span>Nightly</span></div></article>
+        </div>
+      </section>
+
+      <section class="showcase-section" id="screenshots">
+        <div class="section-heading"><div><p class="kicker">The actual interface</p><h2>Built around the work you already do.</h2></div><p>These screens come directly from the current CaddyUI build using the included example configuration—no concept art or separate demo UI.</p></div>
+        <div class="screenshot-grid">
+          <figure class="screenshot-wide"><a href="./assets/caddyui-proxies.png"><img src="./assets/caddyui-proxies.png" alt="CaddyUI Proxies page showing grouped routes, upstreams, imports, and health status" /></a><figcaption><div><strong>Proxies</strong><span>Group routes by domain or category, search across metadata, and keep health visible.</span></div><a href="./assets/caddyui-proxies.png">Open full size ↗</a></figcaption></figure>
+          <figure><a href="./assets/caddyui-middlewares.png"><img src="./assets/caddyui-middlewares.png" alt="CaddyUI Middlewares page with templates, directive helpers, and an editor" /></a><figcaption><div><strong>Middleware library</strong><span>Start with templates, use directive helpers, and preview the resulting block.</span></div><a href="./assets/caddyui-middlewares.png">Open full size ↗</a></figcaption></figure>
+          <figure><a href="./assets/caddyui-logs.png"><img src="./assets/caddyui-logs.png" alt="CaddyUI Logs page showing severity filters and structured log events" /></a><figcaption><div><strong>Logs</strong><span>Filter Caddy and CaddyUI activity by severity, source, order, and output.</span></div><a href="./assets/caddyui-logs.png">Open full size ↗</a></figcaption></figure>
         </div>
       </section>
 
@@ -79,7 +92,7 @@
 
       <section class="install-section" id="install">
         <div class="install-copy"><p class="kicker">Install the stable release</p><h2>Start on your Caddy host.</h2><p>The installer creates the service, configures API mode where supported, and prints a one-time onboarding URL. Run it again later to update.</p><div class="install-links"><a href="https://github.com/PolderLabsVOF/CaddyUI#first-run-checklist">First-run checklist →</a><a href="https://github.com/PolderLabsVOF/CaddyUI/releases">Release channels →</a></div></div>
-        <div class="command-card"><div><span>Terminal</span><button class="copy-button" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/main/scripts/install.sh | bash">Copy</button></div><pre><code><span>$</span> curl -fsSL https://raw.githubusercontent.com/<br />  PolderLabsVOF/CaddyUI/main/scripts/install.sh | bash</code></pre><small><i></i> Stable channel</small></div>
+        <div class="install-details"><div><span>01</span><p><strong>Install the service</strong><small>Resolve the latest stable release and build CaddyUI on the host.</small></p></div><div><span>02</span><p><strong>Connect Caddy</strong><small>Configure API mode and resume the active configuration after restarts.</small></p></div><div><span>03</span><p><strong>Create your admin</strong><small>Use the one-time onboarding URL, then add users and roles.</small></p></div></div>
       </section>
     </main>
 
