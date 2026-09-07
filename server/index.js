@@ -38,6 +38,7 @@ function defaultDataDir() {
 }
 const DATA_DIR = process.env.CADDY_UI_DATA_DIR || defaultDataDir();
 const DB_PATH = process.env.CADDY_UI_DB_PATH || path.join(DATA_DIR, 'caddyui.db');
+const UPDATE_STATUS_PATH = path.join(DATA_DIR, 'update-status.tsv');
 const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
 const SESSION_PATH = path.join(DATA_DIR, 'sessions.json');
 const DEFAULT_SECRET = 'dev-change-me-caddy-ui';
@@ -1225,6 +1226,27 @@ async function appBranch() {
   return result.ok ? result.stdout.trim() : 'unknown';
 }
 
+async function readUpdateProgress() {
+  try {
+    const [phase = '', percent = '', message = '', updatedAt = ''] = (await fs.readFile(UPDATE_STATUS_PATH, 'utf8')).trim().split('\t');
+    const numericPercent = Number(percent);
+    if (!phase || !Number.isFinite(numericPercent)) return null;
+    return {
+      phase,
+      percent: Math.max(0, Math.min(100, Math.round(numericPercent))),
+      message,
+      updatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writeUpdateProgress(phase, percent, message) {
+  await fs.mkdir(path.dirname(UPDATE_STATUS_PATH), { recursive: true });
+  await fs.writeFile(UPDATE_STATUS_PATH, `${phase}\t${percent}\t${message}\t${new Date().toISOString()}\n`, { mode: 0o600 });
+}
+
 async function latestSuccessfulDevNightly() {
   let response;
   try {
@@ -2269,12 +2291,14 @@ app.post('/api/app/update', requireTrustedOrigin, auth, requirePermission('admin
       return res.status(503).json({ error: error.message });
     }
   }
+  await writeUpdateProgress('queued', 12, 'Update request accepted. Starting installer.');
   const child = spawn('bash', [scriptPath], {
     cwd: ROOT,
     env: {
       ...process.env,
       CADDYUI_BRANCH: branch,
       CADDYUI_ASSUME_YES: '1',
+      CADDYUI_UPDATE_STATUS_FILE: UPDATE_STATUS_PATH,
       ...(nightly ? {
         CADDYUI_DEV_NIGHTLY_URL: nightly.assetUrl,
         CADDYUI_DEV_NIGHTLY_COMMIT: nightly.commit,
@@ -2286,6 +2310,10 @@ app.post('/api/app/update', requireTrustedOrigin, auth, requirePermission('admin
   });
   child.unref();
   res.json({ ok: true, started: true });
+});
+
+app.get('/api/app/update-status', auth, requirePermission('view'), async (_req, res) => {
+  res.json({ progress: await readUpdateProgress() });
 });
 
 if (process.env.NODE_ENV === 'production') {

@@ -38,6 +38,16 @@ const api = async (path, options = {}) => {
 
 const canEditRole = (role) => role === 'edit' || role === 'admin';
 const canAdminRole = (role) => role === 'admin';
+const UPDATE_STEPS = [
+  ['target', 'Checking target'],
+  ['queued', 'Starting installer'],
+  ['source', 'Fetching update'],
+  ['dependencies', 'Installing dependencies'],
+  ['build', 'Building interface'],
+  ['restart', 'Restarting service'],
+  ['complete', 'Verifying update'],
+  ['verified', 'Update verified'],
+];
 
 function parseValidationWarning(result = {}) {
   const raw = String(result?.stderr || '').trim();
@@ -73,6 +83,7 @@ export default function App() {
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
+  const [updateProgress, setUpdateProgress] = useState({ percent: 0, phase: 'target', elapsedSeconds: 0 });
   const [caddyBusy, setCaddyBusy] = useState(false);
   const [reloadConfirmOpen, setReloadConfirmOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -139,6 +150,19 @@ export default function App() {
   };
 
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('caddyui-theme', theme); }, [theme]);
+  useEffect(() => {
+    if (!updating) return undefined;
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      setUpdateProgress((current) => {
+        return {
+          ...current,
+          elapsedSeconds: Math.floor((Date.now() - started) / 1000),
+        };
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [updating]);
   useEffect(() => {
     if (localTest) {
       fetch('/local-test/Caddyfile').then((r) => (r.ok ? r.text() : Promise.reject(new Error('Missing local test Caddyfile')))).then((content) => { const parsed = parseCaddyfile(content); const h = Object.fromEntries(parsed.sites.map((site) => [site.id, { local: { online: false }, domain: { online: false } }])); setConfig({ path: 'Caddyfile', content, parsed, health: h }); setHealth(h); }).catch(() => {});
@@ -229,6 +253,7 @@ export default function App() {
   const runUpdate = async () => {
     setUpdating(true);
     setUpdateMessage('Preparing update...');
+    setUpdateProgress({ percent: 6, phase: 'target', elapsedSeconds: 0 });
     setError('');
     try {
       const updateChannel = settings?.updateChannel || '';
@@ -244,16 +269,29 @@ export default function App() {
       const baselineVersion = baseline?.version || baseline?.localVersion || APP_VERSION;
       const targetVersion = baseline?.availableVersion || baseline?.remoteVersion || '';
       setUpdateMessage(targetVersion ? `Updating to ${targetVersion}...` : 'Updating...');
+      setUpdateProgress((current) => ({ ...current, percent: Math.max(current.percent, 10), phase: 'target' }));
 
       await api('/api/app/update', {
         method: 'POST',
         body: JSON.stringify({ updateChannel }),
       });
+      setUpdateMessage('Installer started. Waiting for its first progress update...');
+      setUpdateProgress((current) => ({ ...current, percent: Math.max(current.percent, 12), phase: 'queued' }));
       const started = Date.now();
       let confirmedReadyCount = 0;
       while (Date.now() - started < 240000) {
         await new Promise((resolve) => setTimeout(resolve, 2500));
         try {
+          const updateStatus = await api('/api/app/update-status');
+          if (updateStatus.progress) {
+            const progress = updateStatus.progress;
+            setUpdateProgress((current) => ({
+              ...current,
+              percent: Math.max(current.percent, progress.percent),
+              phase: progress.phase,
+            }));
+            setUpdateMessage(progress.message || updateMessage);
+          }
           const status = await api('/api/app/check-updates', {
             method: 'POST',
             body: JSON.stringify({ updateChannel }),
@@ -269,7 +307,9 @@ export default function App() {
             status.version &&
             baselineVersion !== status.version
           );
-          const branchAligned = !status.branch || !status.currentBranch || status.branch === status.currentBranch;
+          const branchAligned = status.updateChannel === 'dev'
+            ? ['dev', 'caddyui-nightly'].includes(status.currentBranch)
+            : !status.branch || !status.currentBranch || status.branch === status.currentBranch;
           const upToDate =
             status.updateAvailable === false &&
             Boolean(status.localCommit) &&
@@ -281,9 +321,9 @@ export default function App() {
             confirmedReadyCount = 0;
           }
           if (status.updateAvailable) {
-            setUpdateMessage(`Installing update ${status.availableVersion || status.remoteVersion || ''}...`);
+            if (!updateStatus.progress) setUpdateMessage(`Installing update ${status.availableVersion || status.remoteVersion || ''}...`);
           } else {
-            setUpdateMessage('Waiting for updated app to come online...');
+            if (!updateStatus.progress) setUpdateMessage('Waiting for updated app to come online...');
           }
           if (confirmedReadyCount >= 2) {
             const nextVersion = status.version || status.localVersion || targetVersion || baselineVersion;
@@ -296,8 +336,8 @@ export default function App() {
               remoteVersion: status.remoteVersion || nextVersion,
               updateAvailable: false,
             }));
-            setUpdating(false);
-            setUpdateMessage('');
+            setUpdateProgress((current) => ({ ...current, percent: 100, phase: 'verified' }));
+            setUpdateMessage('Update verified. Reloading CaddyUI...');
             pushNotification({ ok: true, message: `Updated to ${nextVersion}. Reloading...`, durationMs: 3000 });
             const url = new URL(window.location.href);
             url.searchParams.set('v', String(Date.now()));
@@ -306,16 +346,18 @@ export default function App() {
           }
         } catch {
           confirmedReadyCount = 0;
-          setUpdateMessage('Restarting service...');
+          setUpdateMessage('CaddyUI is restarting. Waiting for the service to return...');
         }
       }
       setUpdating(false);
       setUpdateMessage('');
+      setUpdateProgress({ percent: 0, phase: 'target', elapsedSeconds: 0 });
       pushNotification({ ok: false, message: 'Update is still running or not ready yet. Check install log.' });
     } catch (e) {
       setError(e.message);
       setUpdating(false);
       setUpdateMessage('');
+      setUpdateProgress({ percent: 0, phase: 'target', elapsedSeconds: 0 });
     }
   };
 
@@ -353,9 +395,19 @@ export default function App() {
       {updating && (
         <div className="updating-screen">
           <div className="updating-card">
-            <Loader2 className="spin" />
             <h3>Updating CaddyUI</h3>
             <p>{updateMessage || 'Please wait...'}</p>
+            <div className="update-progress-meta"><span>{updateProgress.percent}%</span><span>{formatElapsed(updateProgress.elapsedSeconds)} elapsed</span></div>
+            <div className="update-progress-track" role="progressbar" aria-label="Update progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={updateProgress.percent}>
+              <span style={{ width: `${updateProgress.percent}%` }} />
+            </div>
+            <ol className="update-steps">
+              {UPDATE_STEPS.map(([phase, label], index) => {
+                const activeIndex = UPDATE_STEPS.findIndex(([key]) => key === updateProgress.phase);
+                return <li key={phase} className={activeIndex > index ? 'complete' : activeIndex === index ? 'active' : ''}><span>{activeIndex > index ? '✓' : index + 1}</span>{label}</li>;
+              })}
+            </ol>
+            <small>Progress only advances when the installer reports a completed phase. Elapsed time continues while CaddyUI restarts.</small>
           </div>
         </div>
       )}
@@ -406,4 +458,10 @@ export default function App() {
       />
     </Shell>
   );
+}
+
+function formatElapsed(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }

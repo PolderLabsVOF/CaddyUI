@@ -11,6 +11,7 @@ DEV_NIGHTLY_URL="${CADDYUI_DEV_NIGHTLY_URL:-}"
 DEV_NIGHTLY_COMMIT="${CADDYUI_DEV_NIGHTLY_COMMIT:-}"
 DEV_NIGHTLY_SHA256="${CADDYUI_DEV_NIGHTLY_SHA256:-}"
 DEV_NIGHTLY_ASSET_PREFIX="caddyui-nightly-"
+UPDATE_STATUS_FILE="${CADDYUI_UPDATE_STATUS_FILE:-}"
 CONFIG_MODE="${CADDYUI_CONFIG_MODE:-}"
 CADDY_API_URL="${CADDYUI_CADDY_API_URL:-http://127.0.0.1:2019}"
 START_PORT="${CADDYUI_PORT:-8787}"
@@ -56,7 +57,14 @@ ART
 step() { printf "%b\n" "${BLUE}▶${NC} ${BOLD}$*${NC}"; }
 ok() { printf "%b\n" "${GREEN}✓${NC} $*"; }
 warn() { printf "%b\n" "${YELLOW}!${NC} $*"; }
-fail() { printf "%b\n" "${RED}✗${NC} $*" >&2; exit 1; }
+update_status() {
+  [[ -n "$UPDATE_STATUS_FILE" ]] || return 0
+  local phase="$1" percent="$2" message="$3" temporary
+  mkdir -p "$(dirname "$UPDATE_STATUS_FILE")" 2>/dev/null || return 0
+  temporary="${UPDATE_STATUS_FILE}.tmp"
+  printf '%s\t%s\t%s\t%s\n' "$phase" "$percent" "$message" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$temporary" && mv "$temporary" "$UPDATE_STATUS_FILE"
+}
+fail() { update_status failed 100 "Update failed. Check the installer log."; printf "%b\n" "${RED}✗${NC} $*" >&2; exit 1; }
 app_version_from_dir() {
   local dir="$1"
   local package_json="$dir/package.json"
@@ -656,6 +664,7 @@ run_existing_update() {
   step "Existing installation detected"
   ok "Running in update mode"
   step "Updating source"
+  update_status source 24 "Fetching the selected update source."
   run_quiet git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL"
   if [[ "$BRANCH" == "dev" && -n "$DEV_NIGHTLY_URL" ]]; then
     install_dev_nightly
@@ -670,6 +679,7 @@ run_existing_update() {
   ok "Installing app version $APP_VERSION"
 
   step "Installing dependencies"
+  update_status dependencies 46 "Installing application dependencies."
   if [[ -f "$INSTALL_DIR/package-lock.json" ]]; then
     run_quiet npm --prefix "$INSTALL_DIR" ci
   else
@@ -679,10 +689,12 @@ run_existing_update() {
   ok "Dependencies installed"
 
   step "Building web interface"
+  update_status build 68 "Building the production web interface."
   run_quiet npm --prefix "$INSTALL_DIR" run build
   ok "Production build complete"
 
   step "Restarting CaddyUI"
+  update_status restart 84 "Restarting CaddyUI and waiting for it to return."
   if systemd_available && { systemctl list-unit-files | grep -q "^${SERVICE_NAME}\.service" || [[ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]]; }; then
     run_quiet systemctl daemon-reload
     run_quiet systemctl restart "$SERVICE_NAME"
@@ -698,12 +710,14 @@ run_existing_update() {
   fi
   PORT="${PORT:-$START_PORT}"
   wait_for_app
+  update_status complete 96 "CaddyUI restarted. Confirming the installed version."
   IP="$(primary_ip)"
   URL="http://$IP:$PORT"
   printf "\n%b\n" "${GREEN}${BOLD}CaddyUI updated.${NC}"
   printf "%b\n" "Open: ${BOLD}$URL${NC}"
   printf "%b\n" "Install log: $INSTALL_LOG"
   printf "%b\n" "App log:     $APP_LOG"
+  update_status complete 100 "Update completed successfully."
   exit 0
 }
 
