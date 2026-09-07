@@ -5,7 +5,7 @@ If you found a security issue in CaddyUI, please report it privately.
 ## How to report
 
 - Open a private security advisory in GitHub:  
-  https://github.com/DrB0rk/CaddyUI/security/advisories/new
+  https://github.com/PolderLabsVOF/CaddyUI/security/advisories/new
 
 Include:
 - affected version/commit

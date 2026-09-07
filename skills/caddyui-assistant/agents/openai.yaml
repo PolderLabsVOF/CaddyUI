@@ -1,0 +1,8 @@
+interface:
+  display_name: "CaddyUI Assistant"
+  short_description: "Safely operate and troubleshoot CaddyUI"
+  brand_color: "#8B5CF6"
+  default_prompt: "Use $caddyui-assistant to diagnose this CaddyUI or Caddy routing issue safely."
+policy:
+  allow_implicit_invocation: true
+

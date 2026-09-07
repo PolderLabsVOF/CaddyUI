@@ -135,9 +135,16 @@ Read the [development guide](docs/DEVELOPMENT.md) before opening a change and th
 
 ## Links
 
+- [Source code](https://github.com/PolderLabsVOF/CaddyUI)
 - [Releases](https://github.com/PolderLabsVOF/CaddyUI/releases)
 - [Report a bug or request a feature](https://github.com/PolderLabsVOF/CaddyUI/issues)
 - [Stable installer](https://raw.githubusercontent.com/PolderLabsVOF/CaddyUI/main/scripts/install.sh)
+
+## License
+
+CaddyUI is licensed under **GNU AGPL-3.0-only**. You may use, study, copy, modify, and redistribute it under that license. If you modify CaddyUI and make that version available to users over a network, the AGPL requires you to offer those users the corresponding source code under the same license. See [LICENSE](LICENSE) for the complete terms.
+
+Releases and copies already received under the previous MIT license keep the rights granted by that license; the change is not retroactive.
 
 ## Uninstall or reset
 

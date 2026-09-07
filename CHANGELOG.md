@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased (dev)
+
+### Added
+
+- Add a complete CaddyUI assistant skill covering the control-plane domain, safe proxy workflows, API durability, TLS/ACME, Cloudflare diagnosis, updates, roles, and secret handling.
+- Load the CaddyUI skill into every built-in assistant provider request and add regression coverage that prevents raw Caddy configuration from reaching the model.
+- Add polished appearance controls with persistent light/dark mode and five browser-local accent choices.
+- Add source-code links to the desktop and mobile navigation.
+
+### Changed
+
+- Redesign every Settings section with a structured status summary, icon navigation, consistent cards, responsive forms, and mobile layouts.
+- License current CaddyUI development under GNU AGPL-3.0-only; copies already received under MIT retain their existing grant.
+
+### Fixed
+
+- Fix confirmed AI enable/disable proposals passing an invalid argument shape to the proxy parser.
+- Reject confirmed AI delete proposals when the expected hostname no longer matches the selected proxy.
+
+### Security
+
+- Keep raw Caddy configuration server-side when constructing AI provider context while retaining server-side stale-config fingerprints.
+
 ## 0.2.20 - 2026-09-07
 
 - Make API-mode installs durable by switching to `caddy-api.service` and applying installer-created proxies through Caddy's Admin API.

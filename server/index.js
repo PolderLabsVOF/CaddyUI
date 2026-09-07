@@ -2293,11 +2293,12 @@ app.post('/api/ai/actions/:id/confirm', requireTrustedOrigin, auth, requirePermi
       const parsed = parseCaddyfile(content);
       const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
       if (!previous) throw new Error('Proxy not found.');
-      next = setProxyDisabled(content, action.args.line, action.args.disabled === true);
+      next = setProxyDisabled(content, { siteLine: action.args.line, disabled: action.args.disabled === true });
     } else if (action.actionType === 'delete_proxy') {
       const parsed = parseCaddyfile(content);
       const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
       if (!previous) throw new Error('Proxy not found.');
+      if (action.args.expectedHost && !previous.addresses?.includes(action.args.expectedHost)) throw new Error('Proxy host changed since this action was proposed. Ask the assistant to prepare it again.');
       next = deleteBlockAtLine(content, action.args.line);
     } else if (action.actionType === 'reload_caddy') {
       await store.finishAiPendingAction(action.id, req.user.username, 'succeeded');

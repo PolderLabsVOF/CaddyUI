@@ -1,17 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Save, Trash2, UserPlus, UsersRound } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Download, KeyRound, Palette, PlugZap, Save, ShieldCheck, Trash2, TriangleAlert, UserPlus, UsersRound } from 'lucide-react';
 import { Notice, TypedConfirmModal } from '../components/common.jsx';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
 const sectionItems = [
-  ['connection', 'Connection'],
-  ['ai', 'AI assistant'],
-  ['security', 'Security'],
-  ['appearance', 'Appearance'],
-  ['account', 'Account'],
-  ['users', 'Users'],
-  ['updates', 'Updates'],
-  ['danger', 'Danger'],
+  ['connection', 'Connection', PlugZap],
+  ['ai', 'AI assistant', Bot],
+  ['security', 'Security', ShieldCheck],
+  ['appearance', 'Appearance', Palette],
+  ['account', 'Account', KeyRound],
+  ['users', 'Users', UsersRound],
+  ['updates', 'Updates', Download],
+  ['danger', 'Danger', TriangleAlert],
 ];
 
 const accentOptions = [
@@ -384,10 +384,11 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
   const openDangerModal = (kind) => setDangerModal({ open: true, kind, value: '' });
 
   return (
-    <section>
+    <section className="settings-page">
       <div className="settings-page-head">
-        <h2>Settings</h2>
-        <p>Connection, security, users, updates, and recovery tools.</p>
+        <p className="eyebrow">Control plane preferences</p>
+        <h1>Settings</h1>
+        <p>Configure how CaddyUI connects, protects access, assists operators, and receives updates.</p>
       </div>
 
       <div className="settings-overview">
@@ -402,9 +403,9 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
 
       <div className="settings-layout">
         <aside className="settings-subnav">
-          {sectionItems.map(([id, label]) => (
+          {sectionItems.map(([id, label, Icon]) => (
             <button key={id} type="button" className={activeSection === id ? 'active' : ''} onClick={() => setActiveSection(id)}>
-              {label}
+              <Icon size={17} /><span>{label}</span>
             </button>
           ))}
         </aside>

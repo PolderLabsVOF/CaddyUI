@@ -95,6 +95,7 @@ export default function App() {
   const [page, setPage] = useState(pageFromHash);
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('caddyui-theme') || 'dark');
+  const [accent, setAccent] = useState(localStorage.getItem('caddyui-accent') || 'violet');
   const [error, setError] = useState('');
   const [appInfo, setAppInfo] = useState({ version: APP_VERSION, updateAvailable: false });
   const [checkingUpdates, setCheckingUpdates] = useState(false);
@@ -168,6 +169,7 @@ export default function App() {
   };
 
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('caddyui-theme', theme); }, [theme]);
+  useEffect(() => { document.documentElement.dataset.accent = accent; localStorage.setItem('caddyui-accent', accent); }, [accent]);
   useEffect(() => {
     const onHashChange = () => setPage(pageFromHash());
     window.addEventListener('hashchange', onHashChange);
@@ -467,7 +469,7 @@ export default function App() {
       {page === 'tls' && <Tls api={api} canAdmin={canAdmin} setConfig={setConfig} onConfigChanged={notifyConfigChangedNeedsReload} />}
       {page === 'logs' && <Logs api={api} />}
       {page === 'settings' && (
-        <SettingsPage settings={settings} setSettings={setSettings} canEdit={canEdit} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} />
+        <SettingsPage settings={settings} setSettings={setSettings} canEdit={canEdit} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} theme={theme} setTheme={setTheme} accent={accent} setAccent={setAccent} />
       )}
       <ReloadConfirmModal
         open={reloadConfirmOpen}
