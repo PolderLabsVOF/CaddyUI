@@ -35,5 +35,8 @@
   },
   "overrides": {
     "dompurify": "^3.4.2"
+  },
+  "allowScripts": {
+    "sqlite3": true
   }
 }

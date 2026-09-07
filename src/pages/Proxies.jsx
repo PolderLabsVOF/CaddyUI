@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { Loader2, RefreshCw, Wand2 } from 'lucide-react';
+import { Loader2, Plus, RefreshCw, Search, Wand2, X } from 'lucide-react';
 import { appendSimpleProxy, parseCaddyfile, setProxyDisabled, updateSimpleProxy } from '../../server/caddyParser.js';
 import {
   ConfirmModal,
@@ -153,6 +153,7 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [renderLimits, setRenderLimits] = useState({});
+  const [showCreate, setShowCreate] = useState(false);
 
   const sites = config?.parsed?.sites || [];
   const snippets = config?.parsed?.snippets || [];
@@ -263,12 +264,14 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
       if (localTest) {
         applyLocal(appendSimpleProxy(config.content, payload));
         setForm(empty);
+        setShowCreate(false);
         return;
       }
       const data = await api('/api/proxies', { method: 'POST', body: JSON.stringify(payload) });
       setConfig((current) => ({ ...current, content: data.content, parsed: data.parsed, health: data.health || current.health }));
       onConfigChanged?.('Proxy added.');
       setForm(empty);
+      setShowCreate(false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -419,6 +422,7 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
             </select>
           </label>
           <button onClick={refresh}><RefreshCw size={16} /> Refresh</button>
+          {canEdit && <button className="primary" onClick={() => setShowCreate((current) => !current)}><Plus size={16} />{showCreate ? 'Close creator' : 'Add proxy'}</button>}
         </div>
       </div>
 
@@ -433,20 +437,21 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
       )}
 
       <div className="proxy-search">
-        <input placeholder="Search proxies" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <span>{filteredSites.length} shown</span>
+        <div className="proxy-search-field"><Search size={17} aria-hidden="true" /><input aria-label="Search proxies" placeholder="Search host, upstream, tag, category, or middleware" value={search} onChange={(e) => setSearch(e.target.value)} />{search && <button type="button" className="proxy-search-clear" onClick={() => setSearch('')} aria-label="Clear proxy search"><X size={15} /></button>}</div>
+        <span>{filteredSites.length} {filteredSites.length === 1 ? 'proxy' : 'proxies'} shown</span>
       </div>
 
       {error && <Notice type="error">{error}</Notice>}
 
-      {canEdit && (
+      {canEdit && showCreate && (
         <form className="quick-add" onSubmit={add}>
-          <input className="quick-add-host" aria-label="Proxy hostname" list="proxy-domain-suggestions" placeholder="new.example.com" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} />
+          <div className="quick-add-head"><div><strong>Create proxy</strong><span>Point a hostname at an upstream. Organization and logging are optional.</span></div><button type="button" className="icon-button" onClick={() => setShowCreate(false)} aria-label="Close proxy creator"><X size={17} /></button></div>
+          <input className="quick-add-host" aria-label="Proxy hostname" list="proxy-domain-suggestions" placeholder="Hostname · app.example.com" required value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} />
           <datalist id="proxy-domain-suggestions">
             {domains.flatMap((domain) => [`caddyui.${domain}`, `app.${domain}`, domain]).map((host) => <option key={host} value={host} />)}
           </datalist>
-          <input className="quick-add-upstream" aria-label="Upstream address" placeholder="http://10.0.0.10:3000" value={form.upstream} onChange={(e) => setForm({ ...form, upstream: e.target.value })} />
-          <input className="proxy-description-input quick-add-description" aria-label="Proxy description" placeholder="short description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <input className="quick-add-upstream" aria-label="Upstream address" placeholder="Upstream · http://10.0.0.10:3000" required value={form.upstream} onChange={(e) => setForm({ ...form, upstream: e.target.value })} />
+          <input className="proxy-description-input quick-add-description" aria-label="Proxy description" placeholder="Description · internal dashboard" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           <div className="quick-add-category"><AutoCompleteInput
             value={form.category}
             placeholder="category"
@@ -607,7 +612,16 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
             </details>
           );
         })}
+        {!loading && groupedEntries.length === 0 && <div className="proxy-empty-state">
+          <ServerEmptyIllustration />
+          <div><h3>{query ? 'No matching proxies' : 'No proxies configured'}</h3><p>{query ? 'Try a different hostname, upstream, tag, or category.' : 'Create your first reverse proxy to start routing traffic through Caddy.'}</p></div>
+          {query ? <button type="button" onClick={() => setSearch('')}>Clear search</button> : canEdit ? <button type="button" className="primary" onClick={() => setShowCreate(true)}><Plus size={16} />Create proxy</button> : null}
+        </div>}
       </div>
     </section>
   );
+}
+
+function ServerEmptyIllustration() {
+  return <div className="proxy-empty-visual" aria-hidden="true"><span /><span /><span /></div>;
 }

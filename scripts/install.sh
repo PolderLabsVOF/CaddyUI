@@ -265,8 +265,9 @@ ensure_sqlite_compat() {
   if sqlite_runtime_ok; then
     return 0
   fi
-  warn "sqlite3 binary is not compatible with this system."
-  confirm "Install build dependencies and rebuild sqlite3 now?" yes || fail "Install cancelled. CaddyUI cannot run without sqlite3 compatibility."
+  warn "sqlite3 native binding did not load after dependency installation."
+  warn "This can happen when no prebuilt binary matches this Node.js, CPU, or libc version."
+  confirm "Install build dependencies and compile sqlite3 for this host now?" yes || fail "Install cancelled. CaddyUI cannot run without a working sqlite3 native binding."
   step "Installing native build dependencies"
   ensure_native_build_prereqs
   ok "Build dependencies installed"
