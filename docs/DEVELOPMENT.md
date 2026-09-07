@@ -19,6 +19,8 @@ This repository has three long-lived branches. Do not use them interchangeably.
 
 The **Verify** workflow is required on all PRs and protected branches. It installs from the lockfile, type-checks, builds, validates the installer shell syntax, and rejects an invalid channel version. The **Release** workflow creates the GitHub release and a production archive only after the branch build passes and only once per version tag.
 
+Repository branch protection is configured on `dev`, `beta`, and `main`: a passing `verify` check, one code-owner approval, fresh approval after new commits, resolved conversations, signed commits, linear history, and no force-pushes or deletions are required. The workflow also rejects PRs whose source/target pair is outside the table above.
+
 ## Built-in updater channels
 
 - `stable` fetches `main`.
@@ -29,4 +31,4 @@ The updater compares branch commits, not GitHub release tags. A release must the
 
 ## Nightly development builds
 
-Every push to `dev` is verified. The nightly workflow also produces a dated development artifact from the latest `dev` commit; it is for testing only and does not create a GitHub release or mutate a version tag.
+Every push to `dev` is verified. The nightly workflow also produces a dated development artifact from the latest `dev` commit; it is for testing only and does not create a GitHub release or mutate a version tag. Find it under the scheduled workflow run’s **Artifacts** section; artifacts are retained for 14 days.

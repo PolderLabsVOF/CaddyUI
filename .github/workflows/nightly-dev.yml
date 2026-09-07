@@ -23,10 +23,13 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: bash -n scripts/install.sh
+      - name: Record the checked-out dev revision
+        id: revision
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
       - name: Package nightly artifact
-        run: tar -czf "caddyui-dev-${{ github.run_number }}-${GITHUB_SHA::7}.tar.gz" dist package.json package-lock.json scripts/install.sh README.md
+        run: tar -czf "caddyui-dev-${{ github.run_number }}-${{ steps.revision.outputs.short_sha }}.tar.gz" dist package.json package-lock.json scripts/install.sh README.md
       - uses: actions/upload-artifact@v4
         with:
-          name: caddyui-dev-${{ github.run_number }}-${{ github.sha }}
+          name: caddyui-dev-${{ github.run_number }}-${{ steps.revision.outputs.short_sha }}
           path: caddyui-dev-*.tar.gz
           retention-days: 14

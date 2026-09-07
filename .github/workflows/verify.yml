@@ -29,10 +29,25 @@ jobs:
         run: npm ci
       - name: Enforce release-channel versioning
         env:
-          BRANCH: ${{ github.head_ref || github.ref_name }}
+          TARGET_BRANCH: ${{ github.base_ref || github.ref_name }}
+          SOURCE_BRANCH: ${{ github.head_ref || github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            case "$TARGET_BRANCH" in
+              dev)
+                [[ "$SOURCE_BRANCH" != "dev" && "$SOURCE_BRANCH" != "beta" && "$SOURCE_BRANCH" != "main" ]] || { echo "Only short-lived feature/fix branches may target dev."; exit 1; }
+                ;;
+              beta)
+                [[ "$SOURCE_BRANCH" == "dev" ]] || { echo "Only dev may be promoted to beta."; exit 1; }
+                ;;
+              main)
+                [[ "$SOURCE_BRANCH" == "beta" ]] || { echo "Only beta may be promoted to main."; exit 1; }
+                ;;
+            esac
+          fi
           version="$(node -p "require('./package.json').version")"
-          case "$BRANCH" in
+          case "$TARGET_BRANCH" in
             main) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "main releases must use a stable x.y.z version; found $version"; exit 1; } ;;
             beta) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta$ ]] || { echo "beta releases must use x.y.z-beta; found $version"; exit 1; } ;;
           esac
