@@ -1375,16 +1375,27 @@ async function requireMcpToken(req, res, next) {
   return next();
 }
 
+const mcpSessions = new Map();
+
 app.all('/api/mcp', requireMcpToken, async (req, res) => {
-  const server = createMcpServer();
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-  try {
+  const requestedSessionId = String(req.headers['mcp-session-id'] || '').trim();
+  let session = requestedSessionId ? mcpSessions.get(requestedSessionId) : null;
+  if (requestedSessionId && !session) return res.status(404).json({ error: 'MCP session not found.' });
+  if (!session) {
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), enableJsonResponse: true });
+    const server = createMcpServer();
+    session = { server, transport };
+    transport.onclose = () => {
+      if (transport.sessionId) mcpSessions.delete(transport.sessionId);
+      server.close().catch(() => {});
+    };
     await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+  }
+  try {
+    await session.transport.handleRequest(req, res, req.body);
+    if (session.transport.sessionId) mcpSessions.set(session.transport.sessionId, session);
   } catch (error) {
     if (!res.headersSent) res.status(500).json({ error: error.message || 'MCP request failed.' });
-  } finally {
-    await server.close().catch(() => {});
   }
 });
 
