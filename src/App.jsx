@@ -349,7 +349,7 @@ export default function App() {
             pushNotification({ ok: true, message: `Updated to ${nextVersion}. Reloading...`, durationMs: 3000 });
             const url = new URL(window.location.href);
             url.searchParams.set('v', String(Date.now()));
-            setTimeout(() => window.location.replace(url.toString()), 600);
+            window.location.replace(url.toString());
             return;
           }
         } catch {
