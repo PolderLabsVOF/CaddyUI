@@ -61,7 +61,7 @@ export default function Tls({ api, canAdmin, setConfig, onConfigChanged }) {
 
       <div className="tls-summary">
         <div><span>Hosts checked</span><b>{data?.certificates?.length ?? '—'}</b></div>
-        <div><span>Valid handshakes</span><b>{data ? data.certificates.filter((item) => item.ok).length : '—'}</b></div>
+        <div><span>Successful TLS handshakes</span><b>{data ? data.certificates.filter((item) => item.ok).length : '—'}</b></div>
         <div><span>Last checked</span><b>{data?.checkedAt ? new Date(data.checkedAt).toLocaleString() : '—'}</b></div>
       </div>
 
