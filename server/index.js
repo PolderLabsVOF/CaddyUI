@@ -160,7 +160,7 @@ app.use('/api', (_req, res, next) => {
 app.use((_req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   );
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -759,8 +759,22 @@ async function loadResetConfigTemplate() {
 }
 
 function caddyPathPart(value = '') {
-  if (Array.isArray(value)) return value.filter(Boolean).join('/');
-  return String(value || '').trim().replace(/^\/+|\/+$/g, '');
+  const rawSegments = Array.isArray(value)
+    ? value.flatMap((part) => String(part || '').split('/'))
+    : String(value || '').trim().replace(/^\/+|\/+$/g, '').split('/');
+  return rawSegments
+    .filter((segment) => segment !== '')
+    .map((segment) => {
+      let decoded = segment;
+      try { decoded = decodeURIComponent(segment); } catch {}
+      if (decoded === '.' || decoded === '..' || /[\\\0?#]/.test(decoded)) {
+        const error = new Error('Invalid Caddy API path.');
+        error.statusCode = 400;
+        throw error;
+      }
+      return encodeURIComponent(decoded);
+    })
+    .join('/');
 }
 
 function caddyEndpoint(scope, path = '') {
@@ -804,6 +818,56 @@ async function caddyResponseData(response) {
     } catch {}
   }
   return { status: response.status, ok: response.ok, etag, contentType, raw: text, data };
+}
+
+function parsePrometheusLabels(source = '') {
+  const labels = {};
+  const pattern = /([a-zA-Z_][a-zA-Z0-9_]*)="((?:\\.|[^"\\])*)"(?:,|$)/g;
+  let match;
+  while ((match = pattern.exec(source))) {
+    labels[match[1]] = match[2].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  return labels;
+}
+
+function parsePrometheusMetrics(content = '') {
+  const metadata = new Map();
+  const samples = [];
+  for (const rawLine of String(content || '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const meta = line.match(/^#\s+(HELP|TYPE)\s+([^\s]+)\s+(.+)$/);
+    if (meta) {
+      const entry = metadata.get(meta[2]) || {};
+      entry[meta[1].toLowerCase()] = meta[3];
+      metadata.set(meta[2], entry);
+      continue;
+    }
+    if (line.startsWith('#')) continue;
+    const sample = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(.*)\})?\s+([^\s]+)(?:\s+\d+)?$/);
+    if (!sample) continue;
+    const value = Number(sample[3]);
+    if (!Number.isFinite(value)) continue;
+    const family = sample[1].replace(/_(?:bucket|count|sum|created)$/, '');
+    const details = metadata.get(sample[1]) || metadata.get(family) || {};
+    samples.push({
+      name: sample[1],
+      labels: parsePrometheusLabels(sample[2] || ''),
+      value,
+      ...details,
+    });
+  }
+  const sum = (name) => samples.filter((sample) => sample.name === name).reduce((total, sample) => total + sample.value, 0);
+  const first = (name) => samples.find((sample) => sample.name === name)?.value;
+  return {
+    samples,
+    summary: {
+      goroutines: first('go_goroutines'),
+      memoryBytes: first('go_memstats_alloc_bytes'),
+      requestsInFlight: sum('caddy_http_requests_in_flight'),
+      processStartTime: first('process_start_time_seconds'),
+    },
+  };
 }
 
 async function applyConfigContent(settings, content, { backup = false } = {}) {
@@ -1556,7 +1620,7 @@ app.post('/api/caddy/load', requireTrustedOrigin, auth, requirePermission('edit'
       error: result.ok ? '' : result.raw,
     });
   } catch (error) {
-    return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+    return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
   }
 });
 
@@ -1572,7 +1636,7 @@ app.post('/api/caddy/stop', requireTrustedOrigin, auth, requirePermission('admin
       error: result.ok ? '' : result.raw,
     });
   } catch (error) {
-    return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+    return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
   }
 });
 
@@ -1607,7 +1671,7 @@ app.post('/api/caddy/adapt', requireTrustedOrigin, auth, requirePermission('edit
       error: result.ok ? '' : result.raw,
     });
   } catch (error) {
-    return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+    return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
   }
 });
 
@@ -1629,7 +1693,7 @@ app.get(caddyConfigRoutes, auth, requirePermission('view'), async (req, res) => 
       error: result.ok ? '' : result.raw,
     });
   } catch (error) {
-    return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+    return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
   }
 });
 
@@ -1658,7 +1722,7 @@ for (const method of ['post', 'put', 'patch', 'delete']) {
         error: result.ok ? '' : result.raw,
       });
     } catch (error) {
-      return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+      return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
     }
   });
 }
@@ -1681,7 +1745,7 @@ app.get(caddyIdRoutes, auth, requirePermission('view'), async (req, res) => {
       error: result.ok ? '' : result.raw,
     });
   } catch (error) {
-    return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+    return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
   }
 });
 
@@ -1713,7 +1777,7 @@ for (const method of ['post', 'put', 'patch', 'delete']) {
         error: result.ok ? '' : result.raw,
       });
     } catch (error) {
-      return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+      return res.status(error.statusCode || 503).json({ error: error.message || 'Caddy API is unavailable.' });
     }
   });
 }
@@ -1751,6 +1815,27 @@ app.get('/api/caddy/pki/ca/:id/certificates', auth, requirePermission('view'), a
     });
   } catch (error) {
     return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+  }
+});
+
+app.get('/api/caddy/metrics', auth, requirePermission('view'), async (_req, res) => {
+  try {
+    const settings = await loadSettings();
+    const response = await requestCaddyApi(settings, '/metrics', {
+      method: 'GET',
+      headers: { Accept: 'text/plain' },
+      timeoutMs: 8000,
+    });
+    const raw = await response.text();
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: raw || `Caddy metrics request failed (${response.status}).`,
+        status: response.status,
+      });
+    }
+    return res.json({ ok: true, raw, ...parsePrometheusMetrics(raw) });
+  } catch (error) {
+    return res.status(503).json({ error: error.message || 'Caddy metrics are unavailable.' });
   }
 });
 
@@ -2565,6 +2650,7 @@ app.get('/api/app/update-status', auth, requirePermission('view'), async (_req, 
 
 if (process.env.NODE_ENV === 'production') {
   const dist = path.join(ROOT, 'dist');
+  app.use('/vendor/monaco', express.static(path.join(ROOT, 'node_modules', 'monaco-editor', 'min')));
   app.use(express.static(dist, {
     index: false,
     setHeaders(res, filePath) {
@@ -2589,7 +2675,7 @@ loadSettings().catch(() => {});
 
 const isRunningUnderVitest = process.env.VITEST === 'true' || Boolean(import.meta.vitest);
 
-export { probeTarget, tcpCheck, checkProxyHealth };
+export { caddyPathPart, checkProxyHealth, parsePrometheusMetrics, probeTarget, tcpCheck };
 
 if (!isRunningUnderVitest) {
   app.listen(PORT, () => {

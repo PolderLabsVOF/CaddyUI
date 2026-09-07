@@ -1,10 +1,11 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, LogOut, Menu, MessageSquare, Moon, MoreHorizontal, Pencil, Power, RefreshCw, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun, Trash2, X } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, LogOut, Menu, MessageSquare, Moon, MoreHorizontal, Pencil, Power, RefreshCw, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun, Trash2, X } from 'lucide-react';
 import { updateSimpleProxy } from '../../server/caddyParser.js';
 
 export const pageItems = [
   ['proxies', ServerCog, 'Proxies'],
   ['middlewares', Layers3, 'Middlewares'],
+  ['caddy', Activity, 'Runtime'],
   ['tls', ShieldCheck, 'TLS'],
   ['logs', ScrollText, 'Logs'],
   ['settings', Settings, 'Settings'],

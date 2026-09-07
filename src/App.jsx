@@ -7,6 +7,7 @@ import Proxies from './pages/Proxies.jsx';
 import Middlewares from './pages/Middlewares.jsx';
 import Logs from './pages/Logs.jsx';
 import Tls from './pages/Tls.jsx';
+import CaddyRuntime from './pages/CaddyRuntime.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import { AuthGate, Notice, ReloadConfirmModal, Shell } from './components/common.jsx';
 import AiAssistant from './components/AiAssistant.jsx';
@@ -38,13 +39,18 @@ const localSettings = {
 const api = async (path, options = {}) => {
   const res = await fetch(path, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || data.stderr || `Request failed: ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(data.error || data.stderr || `Request failed: ${res.status}`);
+    error.status = res.status;
+    error.data = data;
+    throw error;
+  }
   return data;
 };
 
 const canEditRole = (role) => role === 'edit' || role === 'admin';
 const canAdminRole = (role) => role === 'admin';
-const PAGE_IDS = new Set(['proxies', 'middlewares', 'tls', 'logs', 'settings']);
+const PAGE_IDS = new Set(['proxies', 'middlewares', 'caddy', 'tls', 'logs', 'settings']);
 const pageFromHash = () => {
   const candidate = window.location.hash.replace(/^#\/?/, '').trim();
   return PAGE_IDS.has(candidate) ? candidate : 'proxies';
@@ -457,6 +463,7 @@ export default function App() {
           onConfigChanged={notifyConfigChangedNeedsReload}
         />
       )}
+      {page === 'caddy' && <CaddyRuntime api={api} canEdit={canEdit} canAdmin={canAdmin} theme={theme} notify={pushNotification} />}
       {page === 'tls' && <Tls api={api} canAdmin={canAdmin} setConfig={setConfig} onConfigChanged={notifyConfigChangedNeedsReload} />}
       {page === 'logs' && <Logs api={api} />}
       {page === 'settings' && (

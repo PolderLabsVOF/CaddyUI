@@ -49,7 +49,7 @@ The curl installer is intentionally stable-only. Select **Beta** or **Nightly** 
 | --- | --- |
 | **Proxies** | Create, group, search, enable, and edit reverse-proxy routes. |
 | **Middlewares** | Maintain reusable snippets and route-level building blocks. |
-| **Configuration** | Inspect and edit the complete live Caddy JSON configuration. |
+| **Runtime** | Control live apps, HTTP servers, protocols, lifecycle, metrics, upstream state, TLS/ECH, local PKI, and every JSON module path. |
 | **TLS** | Triage live certificate handshakes, expiry, issuer, SANs, and ACME defaults. |
 | **Logs** | Read discovered Caddy logs and `journalctl` output in one place. |
 | **Access** | Manage local users and `view`, `edit`, and `admin` roles. |
@@ -70,7 +70,9 @@ The curl installer is intentionally stable-only. Select **Beta** or **Nightly** 
     └── update-channel installer
 ```
 
-CaddyUI keeps a working configuration cache for the editor and sends accepted changes to Caddy’s Admin API. In an API-managed installation, start Caddy with `--resume` (the installer enables the packaged `caddy-api.service` when available). Do not later load `/etc/caddy/Caddyfile` through the normal file-managed service: doing so replaces the API-managed configuration.
+CaddyUI’s **Runtime** page reads and writes Caddy’s native JSON directly. Its path editor supports atomic replace, create/append, insert, and delete operations with path-specific ETags to prevent lost updates. The focused forms cover HTTP/1.1, HTTP/2, H2C, HTTP/3, 0-RTT, timeouts, full duplex, and Caddy 2.11 TCP keepalive controls; the remaining stock and third-party module fields stay available through the same JSON tree.
+
+In an API-managed installation, start Caddy with `--resume` (the installer enables the packaged `caddy-api.service` when available). Do not later load `/etc/caddy/Caddyfile` through the normal file-managed service: doing so replaces the API-managed configuration.
 
 A Caddyfile can still be selected during onboarding as a one-time editor bootstrap source. It is not used to reload an API-managed Caddy instance.
 

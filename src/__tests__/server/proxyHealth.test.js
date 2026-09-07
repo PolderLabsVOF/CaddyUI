@@ -3,7 +3,7 @@ vi.mock('sqlite', () => ({ open: () => Promise.resolve({ exec: async () => {}, r
 
 import net from 'node:net';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { checkProxyHealth, probeTarget } from '../../../server/index.js';
+import { caddyPathPart, checkProxyHealth, parsePrometheusMetrics, probeTarget } from '../../../server/index.js';
 
 let server;
 let port;
@@ -35,5 +35,29 @@ describe('local proxy health', () => {
     expect(health.active.local.online).toBe(true);
     expect(health.active).not.toHaveProperty('domain');
     expect(health.disabled.local).toMatchObject({ online: false, error: 'disabled' });
+  });
+});
+
+describe('Caddy Admin API helpers', () => {
+  test('encodes native config path segments and rejects traversal', () => {
+    expect(caddyPathPart(['apps', 'http', 'servers', 'public api'])).toBe('apps/http/servers/public%20api');
+    expect(() => caddyPathPart('apps/http/../stop')).toThrow(/invalid caddy api path/i);
+    expect(() => caddyPathPart('%2e%2e/stop')).toThrow(/invalid caddy api path/i);
+  });
+
+  test('parses Prometheus values without losing labels', () => {
+    const parsed = parsePrometheusMetrics([
+      '# HELP go_goroutines Number of goroutines.',
+      '# TYPE go_goroutines gauge',
+      'go_goroutines 42',
+      'caddy_http_requests_in_flight{server="srv0"} 3',
+      'process_start_time_seconds 1000',
+    ].join('\n'));
+
+    expect(parsed.samples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'go_goroutines', value: 42, help: 'Number of goroutines.', type: 'gauge' }),
+      expect.objectContaining({ name: 'caddy_http_requests_in_flight', value: 3, labels: { server: 'srv0' } }),
+    ]));
+    expect(parsed.summary).toMatchObject({ goroutines: 42, requestsInFlight: 3, processStartTime: 1000 });
   });
 });
