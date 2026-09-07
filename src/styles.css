@@ -1102,7 +1102,7 @@ label {
 .middleware-table-head,
 .middleware-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1.15fr) 100px 92px minmax(220px, 0.9fr) minmax(220px, 1fr) 270px;
+  grid-template-columns: minmax(230px, 1.1fr) minmax(220px, 1fr) minmax(180px, .9fr) 76px;
   gap: 10px;
   align-items: center;
 }
@@ -1147,6 +1147,9 @@ label {
 }
 
 .middleware-name small {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: var(--muted);
 }
 
@@ -1193,6 +1196,14 @@ label {
   grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr) minmax(260px, 0.8fr);
   gap: 14px;
 }
+.middleware-dialog-actions { display: grid; gap: 7px; margin-top: 16px; }
+.middleware-dialog-actions .danger { justify-content: flex-start; }
+.middleware-preview-help { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.config-mode-tabs { display: flex; gap: 7px; margin: 0 0 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.config-mode-tabs button.active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text); }
+.proxy-enabled-toggle { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 13px; font-weight: 700; }
+.proxy-enabled-toggle input { width: auto; }
+.proxy-advanced-editor { display: grid; gap: 12px; }.proxy-advanced-editor h4 { margin: 0 0 5px; }.proxy-advanced-editor p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 
 .middleware-meta-grid {
   display: grid;

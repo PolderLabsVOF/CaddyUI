@@ -5,10 +5,10 @@ import { updateSimpleProxy } from '../../server/caddyParser.js';
 export const pageItems = [
   ['proxies', ServerCog, 'Proxies'],
   ['middlewares', Layers3, 'Middlewares'],
-  ['caddy', Activity, 'Runtime'],
   ['tls', ShieldCheck, 'TLS'],
   ['analytics', Activity, 'Analytics'],
   ['logs', ScrollText, 'Logs'],
+  ['caddy', Activity, 'Runtime'],
   ['settings', Settings, 'Settings'],
 ];
 

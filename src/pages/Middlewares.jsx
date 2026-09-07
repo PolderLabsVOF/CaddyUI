@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { Copy, LayoutTemplate, Layers3, PencilLine, Plus, Search, Sparkles } from 'lucide-react';
+import { Copy, LayoutTemplate, Layers3, Plus, Search, Sparkles } from 'lucide-react';
 import { parseCaddyfile } from '../../server/caddyParser.js';
 import { ConfirmModal, Notice, deleteConfirm, findBlockRange } from '../components/common.jsx';
 
@@ -272,16 +272,6 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
     setForm((current) => ({ ...current, body: appendBodySegment(current.body, helper.body) }));
   };
 
-  const applyTemplateToEdit = (template) => {
-    if (!edit) return;
-    clearMessages();
-    setEdit({
-      ...edit,
-      name: edit.name.trim() ? edit.name : template.name,
-      body: normalizeEditorBody(template.body),
-    });
-  };
-
   const appendHelperToEdit = (helper) => {
     if (!edit) return;
     clearMessages();
@@ -372,6 +362,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
     } finally {
       setBusy(false);
       setConfirmDelete(null);
+      setEdit(null);
     }
   };
 
@@ -386,6 +377,8 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       name: nextDuplicateName(snippet.name, snippets),
       body: normalizeEditorBody(snippet.body),
     });
+    setEdit(null);
+    setCreatorOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setSuccess(`Copied (${snippet.name}) into the create form.`);
   };
@@ -553,12 +546,10 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
 
       <div className="middleware-list middleware-library">
         <div className="middleware-table-head">
-          <span>Name</span>
-          <span>Type</span>
-          <span>Scope</span>
+          <span>Middleware</span>
           <span>Directives</span>
           <span>Used by</span>
-          <span>Actions</span>
+          <span>Scope</span>
         </div>
         {filteredSnippets.map((snippet) => {
           const scope = snippetScope(snippet);
@@ -579,42 +570,11 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
             >
               <span className="middleware-name" data-label="Name">
                 <strong>({snippet.name})</strong>
-                <small>{usageCount > 0 ? `${usageCount} import${usageCount === 1 ? '' : 's'}` : 'unused'}</small>
+                <small><span className={`middleware-chip ${snippet.inferredType || 'snippet'}`}>{snippet.inferredType || 'snippet'}</span>{usageCount > 0 ? `${usageCount} import${usageCount === 1 ? '' : 's'}` : 'unused'}</small>
               </span>
-              <span className="middleware-type" data-label="Type">
-                <span className={`middleware-chip ${snippet.inferredType || 'snippet'}`}>{snippet.inferredType || 'snippet'}</span>
-              </span>
-              <span className="middleware-scope" data-label="Scope">{scope}</span>
               <span className="middleware-directives" data-label="Directives">{snippetDirectiveSummary(snippet)}</span>
               <span className="middleware-usedby" data-label="Used by">{snippet.usedBy?.join(', ') || 'unused'}</span>
-              <div className="row-actions">
-                <button type="button" onClick={(e) => { e.stopPropagation(); copyImportStatement(snippet); }}>
-                  <Copy size={14} />
-                  Copy import
-                </button>
-                <button type="button" onClick={(e) => { e.stopPropagation(); duplicateSnippet(snippet); }}>
-                  <Layers3 size={14} />
-                  Duplicate
-                </button>
-                {canEdit && (
-                  <>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(snippet); }}>
-                      <PencilLine size={14} />
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmDelete(deleteConfirm(e, 'Delete middleware', snippet.name, () => deleteMiddleware(snippet)));
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
-              </div>
+              <span className="middleware-scope" data-label="Scope">{scope}</span>
             </div>
           );
         })}
@@ -633,13 +593,13 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
             <div className="modal-head">
               <div>
                 <h3>Edit middleware</h3>
-                <p>Refine the snippet body, rename it, and keep an eye on usage before saving.</p>
+                <p>Manage reuse details, then edit every Caddyfile directive in the snippet body.</p>
               </div>
               <button type="button" onClick={() => setEdit(null)}>Close</button>
             </div>
             <div className="middleware-edit-layout">
               <div className="proxy-edit-card">
-                <h4>Details</h4>
+                <h4>Identity and reuse</h4>
                 <label>
                   Name
                   <input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
@@ -666,15 +626,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
                   <h4>Imported by</h4>
                   <p>{edit.usedBy?.join(', ') || 'Unused right now.'}</p>
                 </div>
-                <div className="middleware-template-grid compact">
-                  {middlewareTemplates.map((template) => (
-                    <button key={template.key} type="button" className="middleware-template" onClick={() => applyTemplateToEdit(template)}>
-                      <LayoutTemplate size={16} />
-                      <span>{template.label}</span>
-                      <small>{template.scope}</small>
-                    </button>
-                  ))}
-                </div>
+                <div className="middleware-dialog-actions"><button type="button" onClick={() => copyImportStatement(edit)}><Copy size={14} />Copy import</button><button type="button" onClick={() => duplicateSnippet(edit)}><Layers3 size={14} />Duplicate</button>{canEdit && <button type="button" className="danger" onClick={(event) => setConfirmDelete(deleteConfirm(event, 'Delete middleware', edit.name, () => deleteMiddleware(edit)))}>Delete</button>}</div>
               </div>
 
               <div className="proxy-edit-card">
@@ -701,12 +653,9 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
               </div>
 
               <div className="proxy-edit-card middleware-preview-card">
-                <h4>Live preview</h4>
+                <h4>Complete Caddyfile block</h4>
                 <pre>{snippetPreview(edit.name, edit.body)}</pre>
-                <button type="button" onClick={() => copyImportStatement(edit)}>
-                  <Copy size={14} />
-                  Copy import statement
-                </button>
+                <p className="middleware-preview-help">The body editor accepts any valid snippet directives, not only the starter templates.</p>
               </div>
             </div>
             <div className="toolbar">

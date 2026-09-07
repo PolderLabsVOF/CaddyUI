@@ -373,11 +373,13 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
         }
         lines.splice(start, end - start + 1);
         applyLocal(lines.join('\n').replace(/\n{3,}/g, '\n\n'));
+        setEdit(null);
         return;
       }
       const data = await api(`/api/proxies/${site.line}`, { method: 'DELETE' });
       setConfig((current) => ({ ...current, content: data.content, parsed: data.parsed, health: data.health || current.health }));
       onConfigChanged?.('Proxy deleted.');
+      setEdit(null);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -487,10 +489,11 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
         <div className="modal-backdrop" onMouseDown={() => setEdit(null)}>
           <form className="edit-modal proxy-edit-modal" onSubmit={saveEdit} onMouseDown={(e) => e.stopPropagation()}>
             <div className="modal-head">
-              <h3>Edit proxy</h3>
+              <div><h3>Edit proxy</h3><p>{edit.disabled ? 'Disabled. Enable it before traffic can reach this upstream.' : 'Changes apply to this proxy’s generated Caddyfile block.'}</p></div>
               <button type="button" onClick={() => setEdit(null)}>Close</button>
             </div>
-            <div className="proxy-edit-layout">
+            <div className="config-mode-tabs" role="tablist" aria-label="Proxy configuration mode"><button type="button" role="tab" aria-selected={!edit.rawOpen} className={!edit.rawOpen ? 'active' : ''} onClick={() => { const generated = previewProxyBlock(config.content, edit); if (!edit.rawOpen || edit.rawBlock === generated || window.confirm('Discard unsaved Advanced Caddyfile edits and return to Details?')) setEdit((current) => ({ ...current, rawOpen: false })); }}>Details</button><button type="button" role="tab" aria-selected={edit.rawOpen} className={edit.rawOpen ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, rawOpen: true, rawBlock: previewProxyBlock(config.content, current) }))}>Advanced Caddyfile</button></div>
+            {!edit.rawOpen ? <div className="proxy-edit-layout">
               <section className="proxy-edit-card">
                 <h4>Connection</h4>
                 <label>
@@ -556,15 +559,15 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
                     <input value={edit.logPath} onChange={(e) => { const next = { ...edit, logPath: e.target.value }; if (next.rawOpen) next.rawBlock = previewProxyBlock(config.content, next); setEdit(next); }} />
                   </label>
                 )}
+                <label className="proxy-enabled-toggle"><input type="checkbox" checked={!edit.disabled} onChange={(event) => setEdit((current) => ({ ...current, disabled: !event.target.checked }))} />Enable this proxy</label>
               </section>
-            </div>
-            <button type="button" className="expand-toggle" onClick={() => { const nextOpen = !edit.rawOpen; const next = { ...edit, rawOpen: nextOpen }; if (nextOpen) next.rawBlock = previewProxyBlock(config.content, next); setEdit(next); }}>
-              {edit.rawOpen ? 'Hide raw config' : 'Edit raw config'}
-            </button>
-            {edit.rawOpen && (
-              <div className="raw-proxy-editor">
+            </div> : (
+              <section className="proxy-advanced-editor">
+                <div><h4>Full proxy block</h4><p>Use this mode for any Caddyfile directive not represented in Details. The entire block is validated before it is applied.</p></div>
+                <div className="raw-proxy-editor">
                 <Editor height="360px" defaultLanguage="caddyfile" theme={theme === 'light' ? 'light' : 'vs-dark'} value={edit.rawBlock} onChange={(value) => setEdit({ ...edit, rawBlock: value || '' })} options={{ minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', scrollBeyondLastLine: false }} />
-              </div>
+                </div>
+              </section>
             )}
             <div className="toolbar">
               <button className="primary" disabled={busy}>Save</button>
