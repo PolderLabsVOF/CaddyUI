@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { Copy, LayoutTemplate, Layers3, PencilLine, Plus, Search, Sparkles } from 'lucide-react';
+import { Copy, LayoutTemplate, Layers3, Plus, Search, Sparkles } from 'lucide-react';
 import { parseCaddyfile } from '../../server/caddyParser.js';
 import { ConfirmModal, Notice, deleteConfirm, findBlockRange } from '../components/common.jsx';
 
@@ -84,6 +84,10 @@ handle @preflight {
     label: 'header_up',
     body: `header_up X-Forwarded-Host {http.request.host}`,
   },
+  { key: 'header-down', label: 'header_down', body: 'header_down Server ""' },
+  { key: 'request-body', label: 'Request size limit', body: 'request_body {\n\tmax_size 10MB\n}' },
+  { key: 'encode', label: 'Compression', body: 'encode zstd gzip' },
+  { key: 'handle-path', label: 'Path handler', body: 'handle_path /api/* {\n\treverse_proxy 127.0.0.1:8080\n}' },
 ];
 
 function normalizeEditorBody(value = '') {
@@ -155,6 +159,7 @@ function buildDraftFromSnippet(snippet) {
     inferredType: snippet.inferredType,
     usedBy: snippet.usedBy || [],
     scope: snippetScope(snippet),
+    tab: 'compose',
   };
 }
 
@@ -196,15 +201,24 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
   const [typeFilter, setTypeFilter] = useState('all');
   const [usageFilter, setUsageFilter] = useState('all');
   const [scopeFilter, setScopeFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('usage');
+  const [creatorOpen, setCreatorOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState('blank');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const creatorNameRef = useRef(null);
 
   const query = search.trim().toLowerCase();
-  const filteredSnippets = useMemo(
-    () => snippets.filter((snippet) => filterSnippet(snippet, query, typeFilter, usageFilter, scopeFilter)),
-    [snippets, query, typeFilter, usageFilter, scopeFilter]
-  );
+  const hasActiveFilters = Boolean(query || typeFilter !== 'all' || usageFilter !== 'all' || scopeFilter !== 'all');
+  const filteredSnippets = useMemo(() => {
+    const items = snippets.filter((snippet) => filterSnippet(snippet, query, typeFilter, usageFilter, scopeFilter));
+    return items.sort((left, right) => {
+      if (sortBy === 'name') return String(left.name).localeCompare(String(right.name));
+      if (sortBy === 'type') return String(left.inferredType || 'snippet').localeCompare(String(right.inferredType || 'snippet'));
+      return (right.usedBy?.length || 0) - (left.usedBy?.length || 0) || String(left.name).localeCompare(String(right.name));
+    });
+  }, [snippets, query, typeFilter, usageFilter, scopeFilter, sortBy]);
 
   const summary = useMemo(() => {
     const used = snippets.filter((snippet) => (snippet.usedBy?.length || 0) > 0).length;
@@ -244,21 +258,32 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       name: form.name.trim() ? form.name : template.name,
       body: normalizeEditorBody(template.body),
     });
+    setSelectedTemplate(template.key);
+  };
+
+  const clearDraft = () => {
+    clearMessages();
+    setForm({ name: '', body: '' });
+    setSelectedTemplate('blank');
+    window.requestAnimationFrame(() => creatorNameRef.current?.focus());
+  };
+
+  const openCreator = () => {
+    setCreatorOpen(true);
+    window.requestAnimationFrame(() => creatorNameRef.current?.focus());
+  };
+
+  const clearFilters = () => {
+    setSearch('');
+    setTypeFilter('all');
+    setUsageFilter('all');
+    setScopeFilter('all');
+    setSortBy('usage');
   };
 
   const appendHelperToForm = (helper) => {
     clearMessages();
     setForm((current) => ({ ...current, body: appendBodySegment(current.body, helper.body) }));
-  };
-
-  const applyTemplateToEdit = (template) => {
-    if (!edit) return;
-    clearMessages();
-    setEdit({
-      ...edit,
-      name: edit.name.trim() ? edit.name : template.name,
-      body: normalizeEditorBody(template.body),
-    });
   };
 
   const appendHelperToEdit = (helper) => {
@@ -276,6 +301,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       if (localTest) {
         applyLocal(`${config.content.trimEnd()}\n\n${localSnippetBlock(form.name, normalizedBody)}\n`);
         setForm({ name: '', body: '' });
+        setSelectedTemplate('blank');
         setSuccess('Middleware added locally.');
         return;
       }
@@ -286,6 +312,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       setConfig((current) => ({ ...current, content: data.content, parsed: data.parsed }));
       onConfigChanged?.('Middleware added.');
       setForm({ name: '', body: '' });
+      setSelectedTemplate('blank');
       setSuccess('Middleware added.');
     } catch (err) {
       setError(err.message);
@@ -351,6 +378,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
     } finally {
       setBusy(false);
       setConfirmDelete(null);
+      setEdit(null);
     }
   };
 
@@ -365,6 +393,9 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
       name: nextDuplicateName(snippet.name, snippets),
       body: normalizeEditorBody(snippet.body),
     });
+    setSelectedTemplate('blank');
+    setEdit(null);
+    setCreatorOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setSuccess(`Copied (${snippet.name}) into the create form.`);
   };
@@ -379,13 +410,24 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
     }
   };
 
+  const copyDraftBlock = async () => {
+    try {
+      await navigator.clipboard.writeText(snippetPreview(form.name, form.body));
+      setSuccess('Copied the generated middleware block.');
+    } catch {
+      setError('Clipboard copy failed.');
+      setMessage('');
+    }
+  };
+
   return (
-    <section>
-      <div className="section-head">
+    <section className="middleware-page">
+      <div className="section-head middleware-page-head">
         <div>
           <h2>Middlewares</h2>
-          <p>Build, search, duplicate, and maintain snippet libraries without dropping straight into raw config every time.</p>
+          <p>Reusable Caddyfile building blocks, with clear usage and fast paths to create, inspect, and reuse each one.</p>
         </div>
+        {canEdit && <button className="primary" type="button" onClick={openCreator}><Plus size={16} />New middleware</button>}
       </div>
 
       {message && <Notice type="success">{message}</Notice>}
@@ -398,38 +440,91 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
         <div><b>{summary.auth}</b><span>Auth snippets</span></div>
       </div>
 
-      {canEdit && (
+      {canEdit && !creatorOpen && (
+        <section className="middleware-create-cta">
+          <div><h3>Create a reusable building block</h3><p>Start from a proven template or write the directives you need. The preview always shows the exact snippet that will be saved.</p></div>
+          <button type="button" onClick={openCreator}><Plus size={16} />Create middleware</button>
+        </section>
+      )}
+
+      {canEdit && creatorOpen && (
         <div className="middleware-workbench">
           <form className="middleware-builder" onSubmit={add}>
-            <div className="middleware-builder-main">
-              <div className="middleware-card-head">
+            <aside className="middleware-starter-rail" aria-label="Middleware starting points">
+              <div className="middleware-creator-section-head">
                 <div>
-                  <h3>Create middleware</h3>
-                  <p>Start from a template, tweak the body, and add it directly to the Caddyfile snippet library.</p>
+                  <span className="middleware-step">1. Start</span>
+                  <h3>Choose a starting point</h3>
+                  <p>Use a proven pattern or start with an empty snippet.</p>
                 </div>
-                <button type="submit" className="primary" disabled={busy}>
+              </div>
+              <div className="middleware-starter-list">
+                <button
+                  type="button"
+                  className={`middleware-template middleware-template-blank ${selectedTemplate === 'blank' ? 'selected' : ''}`}
+                  aria-pressed={selectedTemplate === 'blank'}
+                  onClick={clearDraft}
+                >
                   <Plus size={16} />
-                  Add middleware
+                  <span>Blank middleware</span>
+                  <small>write from scratch</small>
                 </button>
+                {middlewareTemplates.map((template) => (
+                  <button
+                    key={template.key}
+                    type="button"
+                    className={`middleware-template ${selectedTemplate === template.key ? 'selected' : ''}`}
+                    aria-pressed={selectedTemplate === template.key}
+                    onClick={() => applyTemplateToForm(template)}
+                  >
+                    <LayoutTemplate size={16} />
+                    <span>{template.label}</span>
+                    <small>{template.scope} middleware</small>
+                  </button>
+                ))}
+              </div>
+            </aside>
+
+            <div className="middleware-builder-main middleware-composer">
+              <div className="middleware-creator-section-head">
+                <div>
+                  <span className="middleware-step">2. Compose</span>
+                  <h3>New middleware</h3>
+                  <p>Name the reusable block, then add the Caddy directives it should contain.</p>
+                </div>
+                <div className="middleware-composer-actions">
+                  <button type="button" onClick={() => setForm((current) => ({ ...current, body: normalizeEditorBody(current.body) }))}>
+                    <Sparkles size={16} />
+                    Normalize
+                  </button>
+                  <button type="button" onClick={() => setCreatorOpen(false)}>Close</button>
+                </div>
               </div>
               <label>
-                Name
+                Middleware name
                 <input
+                  ref={creatorNameRef}
                   placeholder="security_headers"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </label>
-              <div className="middleware-editor-toolbar toolbar">
-                <button type="button" onClick={() => setForm((current) => ({ ...current, body: normalizeEditorBody(current.body) }))}>
-                  <Sparkles size={16} />
-                  Normalize indentation
-                </button>
-                <button type="button" onClick={() => setForm({ name: '', body: '' })}>Clear draft</button>
+              <div className="middleware-directive-bar">
+                <div>
+                  <span className="middleware-step">Directives</span>
+                  <p>Append a common block, then fine-tune it in the editor below.</p>
+                </div>
+                <div className="middleware-helper-list" aria-label="Directive helpers">
+                  {middlewareHelpers.map((helper) => (
+                    <button key={helper.key} type="button" onClick={() => appendHelperToForm(helper)}>
+                      <Plus size={14} />{helper.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="middleware-editor middleware-editor-large">
                 <Editor
-                  height="320px"
+                  height="390px"
                   defaultLanguage="caddyfile"
                   theme={theme === 'light' ? 'light' : 'vs-dark'}
                   value={form.body}
@@ -439,51 +534,27 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
               </div>
             </div>
 
-            <div className="middleware-builder-side">
-              <div className="middleware-side-card">
-                <div className="middleware-card-head compact">
-                  <div>
-                    <h4>Starter templates</h4>
-                    <p>Quick-fill common middleware patterns.</p>
-                  </div>
+            <aside className="middleware-builder-side middleware-preview-card">
+              <div className="middleware-creator-section-head">
+                <div>
+                  <span className="middleware-step">3. Review</span>
+                  <h3>Generated Caddyfile</h3>
+                  <p>This exact reusable block will be added to the snippet library.</p>
                 </div>
-                <div className="middleware-template-grid">
-                  {middlewareTemplates.map((template) => (
-                    <button key={template.key} type="button" className="middleware-template" onClick={() => applyTemplateToForm(template)}>
-                      <LayoutTemplate size={16} />
-                      <span>{template.label}</span>
-                      <small>{template.scope}</small>
-                    </button>
-                  ))}
-                </div>
+                <button type="button" className="icon-button" onClick={copyDraftBlock} aria-label="Copy generated middleware block" title="Copy generated block">
+                  <Copy size={16} />
+                </button>
               </div>
-
-              <div className="middleware-side-card">
-                <div className="middleware-card-head compact">
-                  <div>
-                    <h4>Directive helpers</h4>
-                    <p>Append small blocks instead of rewriting boilerplate by hand.</p>
-                  </div>
-                </div>
-                <div className="middleware-helper-list">
-                  {middlewareHelpers.map((helper) => (
-                    <button key={helper.key} type="button" onClick={() => appendHelperToForm(helper)}>
-                      {helper.label}
-                    </button>
-                  ))}
-                </div>
+              <pre>{snippetPreview(form.name, form.body)}</pre>
+              <div className="middleware-save-panel">
+                <p>{form.name.trim() && form.body.trim() ? 'Ready to add this middleware.' : 'Add a name and at least one directive to continue.'}</p>
+                <button type="submit" className="primary" disabled={busy || !form.name.trim() || !form.body.trim()}>
+                  <Plus size={16} />
+                  {busy ? 'Adding middleware…' : 'Add middleware'}
+                </button>
+                <button type="button" className="middleware-clear-draft" onClick={clearDraft}>Clear draft</button>
               </div>
-
-              <div className="middleware-side-card middleware-preview-card">
-                <div className="middleware-card-head compact">
-                  <div>
-                    <h4>Preview</h4>
-                    <p>This is the block that will be written.</p>
-                  </div>
-                </div>
-                <pre>{snippetPreview(form.name, form.body)}</pre>
-              </div>
-            </div>
+            </aside>
           </form>
         </div>
       )}
@@ -493,39 +564,39 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
           <Search size={16} />
           <input placeholder="Search by name, directive, usage, or body" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+        <select aria-label="Filter by middleware type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="all">All types</option>
           <option value="snippet">snippet</option>
           <option value="headers">headers</option>
           <option value="auth">auth</option>
           <option value="tls">tls</option>
         </select>
-        <select value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value)}>
+        <select aria-label="Filter by middleware scope" value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value)}>
           <option value="all">All scopes</option>
           <option value="site">site</option>
           <option value="proxy">proxy</option>
         </select>
-        <select value={usageFilter} onChange={(e) => setUsageFilter(e.target.value)}>
+        <select aria-label="Filter by middleware usage" value={usageFilter} onChange={(e) => setUsageFilter(e.target.value)}>
           <option value="all">All usage</option>
           <option value="used">In use</option>
           <option value="unused">Unused</option>
         </select>
+        <select aria-label="Sort middlewares" value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="usage">Most used</option><option value="name">Name</option><option value="type">Type</option></select>
+        {(search || typeFilter !== 'all' || scopeFilter !== 'all' || usageFilter !== 'all' || sortBy !== 'usage') && <button type="button" className="middleware-clear-filters" onClick={clearFilters}>Clear filters</button>}
       </div>
 
       <div className="middleware-results">
-        <span>{filteredSnippets.length} shown</span>
+        <span>{filteredSnippets.length} shown · sorted by {sortBy === 'usage' ? 'usage' : sortBy}</span>
         <span>{summary.total} total</span>
         <span>{summary.unused} unused</span>
       </div>
 
       <div className="middleware-list middleware-library">
         <div className="middleware-table-head">
-          <span>Name</span>
-          <span>Type</span>
-          <span>Scope</span>
+          <span>Middleware</span>
           <span>Directives</span>
           <span>Used by</span>
-          <span>Actions</span>
+          <span>Scope</span>
         </div>
         {filteredSnippets.map((snippet) => {
           const scope = snippetScope(snippet);
@@ -546,42 +617,11 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
             >
               <span className="middleware-name" data-label="Name">
                 <strong>({snippet.name})</strong>
-                <small>{usageCount > 0 ? `${usageCount} import${usageCount === 1 ? '' : 's'}` : 'unused'}</small>
+                <small><span className={`middleware-chip ${snippet.inferredType || 'snippet'}`}>{snippet.inferredType || 'snippet'}</span>{usageCount > 0 ? `${usageCount} import${usageCount === 1 ? '' : 's'}` : 'unused'}</small>
               </span>
-              <span className="middleware-type" data-label="Type">
-                <span className={`middleware-chip ${snippet.inferredType || 'snippet'}`}>{snippet.inferredType || 'snippet'}</span>
-              </span>
-              <span className="middleware-scope" data-label="Scope">{scope}</span>
               <span className="middleware-directives" data-label="Directives">{snippetDirectiveSummary(snippet)}</span>
               <span className="middleware-usedby" data-label="Used by">{snippet.usedBy?.join(', ') || 'unused'}</span>
-              <div className="row-actions">
-                <button type="button" onClick={(e) => { e.stopPropagation(); copyImportStatement(snippet); }}>
-                  <Copy size={14} />
-                  Copy import
-                </button>
-                <button type="button" onClick={(e) => { e.stopPropagation(); duplicateSnippet(snippet); }}>
-                  <Layers3 size={14} />
-                  Duplicate
-                </button>
-                {canEdit && (
-                  <>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(snippet); }}>
-                      <PencilLine size={14} />
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmDelete(deleteConfirm(e, 'Delete middleware', snippet.name, () => deleteMiddleware(snippet)));
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
-              </div>
+              <span className="middleware-scope" data-label="Scope">{scope}</span>
             </div>
           );
         })}
@@ -589,6 +629,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
           <div className="middleware-empty">
             <h3>No middleware matches</h3>
             <p>Try loosening the filters or create a new snippet from a starter template.</p>
+            {hasActiveFilters ? <button type="button" onClick={clearFilters}>Clear filters</button> : canEdit ? <button type="button" onClick={openCreator}><Plus size={16} />Create middleware</button> : null}
           </div>
         )}
       </div>
@@ -598,14 +639,17 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
           <form className="edit-modal middleware-edit-modal" onSubmit={save} onMouseDown={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div>
-                <h3>Edit middleware</h3>
-                <p>Refine the snippet body, rename it, and keep an eye on usage before saving.</p>
+                <h3>({edit.name || 'middleware'})</h3>
+                <p>{edit.usedBy?.length ? `Imported by ${edit.usedBy.length} routes` : 'Not imported by any route yet'}</p>
               </div>
               <button type="button" onClick={() => setEdit(null)}>Close</button>
             </div>
+            <div className="modal-context"><span>{edit.inferredType || 'snippet'}</span><span>{edit.scope} scope</span><span>{snippetDirectiveSummary(edit)}</span></div>
+            <div className="config-mode-tabs" role="tablist" aria-label="Middleware configuration"><button type="button" role="tab" aria-selected={edit.tab === 'compose'} className={edit.tab === 'compose' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'compose' }))}>Directives</button><button type="button" role="tab" aria-selected={edit.tab === 'reuse'} className={edit.tab === 'reuse' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'reuse' }))}>Reuse & actions</button><button type="button" role="tab" aria-selected={edit.tab === 'preview'} className={edit.tab === 'preview' ? 'active' : ''} onClick={() => setEdit((current) => ({ ...current, tab: 'preview' }))}>Generated block</button></div>
             <div className="middleware-edit-layout">
+              {edit.tab === 'reuse' &&
               <div className="proxy-edit-card">
-                <h4>Details</h4>
+                <h4>Identity and reuse</h4>
                 <label>
                   Name
                   <input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
@@ -630,19 +674,13 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
                 </div>
                 <div className="middleware-usage-list">
                   <h4>Imported by</h4>
-                  <p>{edit.usedBy?.join(', ') || 'Unused right now.'}</p>
+                  {edit.usedBy?.length ? <div className="middleware-usage-chips">{edit.usedBy.map((host) => <span key={host}>{host}</span>)}</div> : <p>Unused right now.</p>}
                 </div>
-                <div className="middleware-template-grid compact">
-                  {middlewareTemplates.map((template) => (
-                    <button key={template.key} type="button" className="middleware-template" onClick={() => applyTemplateToEdit(template)}>
-                      <LayoutTemplate size={16} />
-                      <span>{template.label}</span>
-                      <small>{template.scope}</small>
-                    </button>
-                  ))}
-                </div>
+                <div className="middleware-dialog-actions"><button type="button" onClick={() => copyImportStatement(edit)}><Copy size={14} />Copy import</button><button type="button" onClick={() => duplicateSnippet(edit)}><Layers3 size={14} />Duplicate</button>{canEdit && <button type="button" className="danger" onClick={(event) => setConfirmDelete(deleteConfirm(event, 'Delete middleware', edit.name, () => deleteMiddleware(edit)))}>Delete</button>}</div>
               </div>
+              }
 
+              {edit.tab === 'compose' &&
               <div className="proxy-edit-card">
                 <h4>Body</h4>
                 <div className="middleware-editor-toolbar toolbar">
@@ -665,15 +703,15 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
                   />
                 </div>
               </div>
+              }
 
+              {edit.tab === 'preview' &&
               <div className="proxy-edit-card middleware-preview-card">
-                <h4>Live preview</h4>
+                <h4>Complete Caddyfile block</h4>
                 <pre>{snippetPreview(edit.name, edit.body)}</pre>
-                <button type="button" onClick={() => copyImportStatement(edit)}>
-                  <Copy size={14} />
-                  Copy import statement
-                </button>
+                <p className="middleware-preview-help">The body editor accepts any valid snippet directives, not only the starter templates.</p>
               </div>
+              }
             </div>
             <div className="toolbar">
               <button className="primary" disabled={busy}>Save</button>

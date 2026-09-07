@@ -5,11 +5,12 @@ import pkg from '../package.json';
 import './styles.css';
 import Proxies from './pages/Proxies.jsx';
 import Middlewares from './pages/Middlewares.jsx';
-import Configuration from './pages/Configuration.jsx';
 import Logs from './pages/Logs.jsx';
+import Analytics from './pages/Analytics.jsx';
 import Tls from './pages/Tls.jsx';
+import CaddyRuntime from './pages/CaddyRuntime.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
-import { AuthGate, Notice, ReloadConfirmModal, Shell } from './components/common.jsx';
+import { AuthGate, Notice, ReloadConfirmModal, Shell, UpdateConfirmModal } from './components/common.jsx';
 import AiAssistant from './components/AiAssistant.jsx';
 
 const APP_VERSION = pkg.version;
@@ -39,12 +40,22 @@ const localSettings = {
 const api = async (path, options = {}) => {
   const res = await fetch(path, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || data.stderr || `Request failed: ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(data.error || data.stderr || `Request failed: ${res.status}`);
+    error.status = res.status;
+    error.data = data;
+    throw error;
+  }
   return data;
 };
 
 const canEditRole = (role) => role === 'edit' || role === 'admin';
 const canAdminRole = (role) => role === 'admin';
+const PAGE_IDS = new Set(['proxies', 'middlewares', 'caddy', 'tls', 'analytics', 'logs', 'settings']);
+const pageFromHash = () => {
+  const candidate = window.location.hash.replace(/^#\/?/, '').trim();
+  return PAGE_IDS.has(candidate) ? candidate : 'proxies';
+};
 const UPDATE_STEPS = [
   ['target', 'Checking target'],
   ['queued', 'Starting installer'],
@@ -82,9 +93,10 @@ export default function App() {
   const [settings, setSettings] = useState(localTest ? localSettings : null);
   const [config, setConfig] = useState(localTest ? emptyConfig : null);
   const [health, setHealth] = useState(localTest ? {} : {});
-  const [page, setPage] = useState('proxies');
+  const [page, setPage] = useState(pageFromHash);
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('caddyui-theme') || 'dark');
+  const [accent, setAccent] = useState(localStorage.getItem('caddyui-accent') || 'violet');
   const [error, setError] = useState('');
   const [appInfo, setAppInfo] = useState({ version: APP_VERSION, updateAvailable: false });
   const [checkingUpdates, setCheckingUpdates] = useState(false);
@@ -93,6 +105,7 @@ export default function App() {
   const [updateProgress, setUpdateProgress] = useState({ percent: 0, phase: 'target', elapsedSeconds: 0 });
   const [caddyBusy, setCaddyBusy] = useState(false);
   const [reloadConfirmOpen, setReloadConfirmOpen] = useState(false);
+  const [updateConfirmOpen, setUpdateConfirmOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [configLoading, setConfigLoading] = useState(false);
 
@@ -158,6 +171,12 @@ export default function App() {
   };
 
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('caddyui-theme', theme); }, [theme]);
+  useEffect(() => { document.documentElement.dataset.accent = accent; localStorage.setItem('caddyui-accent', accent); }, [accent]);
+  useEffect(() => {
+    const onHashChange = () => setPage(pageFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
   useEffect(() => {
     if (!updating) return undefined;
     const started = Date.now();
@@ -250,6 +269,12 @@ export default function App() {
   if (!localTest && (!status.authenticated || !settings?.configured)) return <AuthGate status={status} onReady={(data) => { setStatus((prev) => ({ ...prev, ...data, settings: data.settings, authenticated: true, discovered: data.discovered || prev?.discovered })); setSettings(data.settings); if (data.settings.configured) { refreshConfig(); refreshAppStatus(false); } }} api={api} />;
 
   const logout = async () => { if (localTest) { location.reload(); return; } await api('/api/logout', { method: 'POST' }); location.reload(); };
+  const navigatePage = (nextPage) => {
+    if (!PAGE_IDS.has(nextPage)) return;
+    setPage(nextPage);
+    window.history.pushState(null, '', `#/${nextPage}`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const checkUpdates = async () => {
     setCheckingUpdates(true);
     try {
@@ -259,6 +284,7 @@ export default function App() {
     }
   };
   const runUpdate = async () => {
+    setUpdateConfirmOpen(false);
     setUpdating(true);
     setUpdateMessage('Preparing update...');
     setUpdateProgress({ percent: 6, phase: 'target', elapsedSeconds: 0 });
@@ -372,7 +398,7 @@ export default function App() {
   return (
     <Shell
       page={page}
-      setPage={setPage}
+      setPage={navigatePage}
       collapsed={collapsed}
       setCollapsed={setCollapsed}
       user={settings.username}
@@ -381,7 +407,7 @@ export default function App() {
       setTheme={setTheme}
       appInfo={appInfo}
       onCheckUpdates={checkUpdates}
-      onRunUpdate={runUpdate}
+      onRunUpdate={() => setUpdateConfirmOpen(true)}
       canUpdate={canAdmin}
       checkingUpdates={checkingUpdates}
       updating={updating}
@@ -422,6 +448,7 @@ export default function App() {
         <Proxies
           config={config}
           refresh={refreshConfig}
+          refreshHealth={refreshHealth}
           setConfig={setConfig}
           canEdit={canEdit}
           theme={theme}
@@ -441,21 +468,12 @@ export default function App() {
           onConfigChanged={notifyConfigChangedNeedsReload}
         />
       )}
-      {page === 'configuration' && (
-        <Configuration
-          config={config}
-          setConfig={setConfig}
-          refresh={refreshConfig}
-          canEdit={canEdit}
-          theme={theme}
-          api={api}
-          onConfigChanged={notifyConfigChangedNeedsReload}
-        />
-      )}
+      {page === 'caddy' && <CaddyRuntime api={api} canEdit={canEdit} canAdmin={canAdmin} theme={theme} notify={pushNotification} />}
       {page === 'tls' && <Tls api={api} canAdmin={canAdmin} setConfig={setConfig} onConfigChanged={notifyConfigChangedNeedsReload} />}
+      {page === 'analytics' && <Analytics api={api} />}
       {page === 'logs' && <Logs api={api} />}
       {page === 'settings' && (
-        <SettingsPage settings={settings} setSettings={setSettings} canEdit={canEdit} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} />
+        <SettingsPage settings={settings} setSettings={setSettings} canEdit={canEdit} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} theme={theme} setTheme={setTheme} accent={accent} setAccent={setAccent} />
       )}
       <ReloadConfirmModal
         open={reloadConfirmOpen}
@@ -463,12 +481,20 @@ export default function App() {
         onCancel={() => setReloadConfirmOpen(false)}
         onConfirm={reloadCaddyGlobal}
       />
+      <UpdateConfirmModal
+        open={updateConfirmOpen}
+        currentVersion={appInfo?.version || appInfo?.localVersion || APP_VERSION}
+        targetVersion={appInfo?.availableVersion || appInfo?.remoteVersion || ''}
+        channel={settings?.updateChannel || 'stable'}
+        onCancel={() => setUpdateConfirmOpen(false)}
+        onConfirm={runUpdate}
+      />
       <AiAssistant
         api={api}
         settings={settings}
         canAdmin={canAdmin}
         notify={pushNotification}
-        onOpenSettings={() => setPage('settings')}
+        onOpenSettings={() => navigatePage('settings')}
         onActionComplete={(result) => {
           if (result?.parsed) setConfig((current) => ({ ...current, parsed: result.parsed }));
           refreshConfig();

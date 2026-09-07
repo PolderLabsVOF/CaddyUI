@@ -1,20 +1,59 @@
 ---
 name: PR Labels
 
+# pull_request_target is used so the workflow can call the GitHub API
+# to add a default label on behalf of the contributor, including from
+# forks where the default GITHUB_TOKEN is read-only. No code from the
+# PR is checked out, so this is safe despite the elevated permissions.
+
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, labeled, unlabeled, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-labels-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   pr_labels:
     name: 🏭 Verify
     runs-on: ubuntu-latest
     steps:
+      - name: 🏷 Ensure a valid label exists on the PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          VALID_LABELS=(breaking-change bugfix documentation enhancement refactor performance new-feature maintenance ci dependencies)
+          PRESENT_LABELS="$(printf '%s' "$PR_LABELS" | jq -r '.[]? // empty')"
+          for label in "${VALID_LABELS[@]}"; do
+            if printf '%s\n' "$PRESENT_LABELS" | grep -Fxq "$label"; then
+              echo "PR already has valid label: $label"
+              exit 0
+            fi
+          done
+          echo "PR has no valid label; applying 'enhancement' as the default."
+          gh pr edit "$PR_NUMBER" --add-label enhancement
       - name: 🏷 Verify PR has a valid label
-        uses: jesusvasquez333/verify-pr-label-action@v1.4.0
-        with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-          valid-labels: >-
-            breaking-change, bugfix, documentation, enhancement,
-            refactor, performance, new-feature, maintenance, ci, dependencies
-          disable-reviews: true
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          VALID_LABELS='breaking-change,bugfix,documentation,enhancement,refactor,performance,new-feature,maintenance,ci,dependencies'
+          LABELS="$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')"
+          for label in $VALID_LABELS; do
+            if printf '%s\n' "$LABELS" | grep -Fxq "$label"; then
+              echo "Verified: PR has label '$label'."
+              exit 0
+            fi
+          done
+          echo "::error::PR is missing one of: $VALID_LABELS"
+          exit 1
