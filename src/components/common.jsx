@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, LogOut, Menu, MessageSquare, Moon, RefreshCw, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, LogOut, Menu, MessageSquare, Moon, MoreHorizontal, Pencil, Power, RefreshCw, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun, Trash2, X } from 'lucide-react';
 import { updateSimpleProxy } from '../../server/caddyParser.js';
 
 export const pageItems = [
@@ -355,12 +355,32 @@ export function MiddlewarePicker({ snippets, value, onChange }) {
 
 export const StatusDot = ({ check, disabled = false }) => {
   if (disabled || check?.disabled) return <span className="status-dot disabled">disabled</span>;
-  return <span className={`status-dot ${check?.online ? 'online' : 'offline'}`}>{check?.online ? 'online' : 'offline'}</span>;
+  if (!check) return <span className="status-dot pending">checking</span>;
+  return <span className={`status-dot ${check.online ? 'online' : 'offline'}`} title={check.error || undefined}>{check.online ? 'online' : 'offline'}</span>;
 };
 
 export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onEdit, onDelete, onToggleDisabled }) {
   const addresses = Array.isArray(site.addresses) ? site.addresses : [];
   const description = String(site.description || '').trim();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuContainerRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const closeOnOutsideClick = (event) => {
+      if (menuContainerRef.current && !menuContainerRef.current.contains(event.target)) setMenuOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [menuOpen]);
+
   return (
     <div className={`proxy-row ${site.disabled ? 'disabled' : ''}`}>
       <div className={`proxy-row-main ${canEdit ? 'clickable' : ''}`} onClick={canEdit ? onEdit : undefined} role={canEdit ? 'button' : undefined} tabIndex={canEdit ? 0 : undefined} onKeyDown={canEdit ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(); } } : undefined}>
@@ -385,21 +405,25 @@ export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onE
             : 'none'}
           {description && <small className="proxy-description">{description}</small>}
         </span>
-        <span className="proxy-target" data-label="Upstream">{site.proxies[0]?.upstreams?.join(' ') || 'no upstream'}</span>
+        <span className="proxy-target" data-label="Upstream" title={site.proxies[0]?.upstreams?.join(' ') || 'No upstream'}>{site.proxies[0]?.upstreams?.join(' ') || 'no upstream'}</span>
         <div className="proxy-local" data-label="Local">
           <StatusDot check={healthCheck} disabled={site.disabled} />
         </div>
-        <span className={`proxy-state ${site.disabled ? 'disabled' : 'enabled'}`} data-label="State">{site.disabled ? 'disabled' : 'enabled'}</span>
-        <span className="proxy-category" data-label="Category">{site.category || 'none'}</span>
-        <span className="proxy-tags" data-label="Tags">{(site.tags || []).join(', ') || 'none'}</span>
-        <span className="proxy-mw" data-label="Imports">{[...site.imports.map((i) => i.name), ...(site.proxies[0]?.imports?.map((i) => i.name) || [])].join(', ') || 'none'}</span>
-        <div className="row-actions">
+        <span className="proxy-category proxy-meta-value" data-label="Category">{site.category || 'none'}</span>
+        <span className="proxy-tags proxy-meta-value" data-label="Tags" title={(site.tags || []).join(', ')}>{(site.tags || []).join(', ') || 'none'}</span>
+        <span className="proxy-mw proxy-meta-value" data-label="Imports" title={[...site.imports.map((i) => i.name), ...(site.proxies[0]?.imports?.map((i) => i.name) || [])].join(', ')}>{[...site.imports.map((i) => i.name), ...(site.proxies[0]?.imports?.map((i) => i.name) || [])].join(', ') || 'none'}</span>
+        <div className="row-actions" ref={menuContainerRef}>
           {canEdit && (
-            <>
-              <button type="button" onClick={(e) => { e.stopPropagation(); onToggleDisabled(); }}>{site.disabled ? 'Enable' : 'Disable'}</button>
-              <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(); }}>Edit</button>
-              <button type="button" className="danger" onClick={(e) => { e.stopPropagation(); onDelete(e); }}>Delete</button>
-            </>
+            <button type="button" className="row-menu-trigger" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={`Actions for ${addresses[0] || 'proxy'}`} onClick={(e) => { e.stopPropagation(); setMenuOpen((open) => !open); }}>
+              <MoreHorizontal size={18} aria-hidden="true" />
+            </button>
+          )}
+          {canEdit && menuOpen && (
+            <div className="row-menu" role="menu">
+              <button role="menuitem" type="button" className="row-menu-item" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onEdit(); }}><Pencil size={14} />Edit</button>
+              <button role="menuitem" type="button" className="row-menu-item" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onToggleDisabled(); }}><Power size={14} />{site.disabled ? 'Enable' : 'Disable'}</button>
+              <button role="menuitem" type="button" className="row-menu-item danger" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(e); }}><Trash2 size={14} />Delete</button>
+            </div>
           )}
         </div>
       </div>

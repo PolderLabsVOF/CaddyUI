@@ -958,52 +958,42 @@ function tcpCheck(host, port, timeout = 1800) {
   });
 }
 
-async function checkProxyHealth(parsed) {
-  async function probeTarget(host = '', port = 0) {
-    const value = String(host || '').trim();
-    if (!value) return { online: false, error: 'missing', host: '', port };
-    const ipVersion = net.isIP(value);
-    if (ipVersion > 0) {
-      if (privateIp(value)) return { online: false, error: 'blocked-private-address', host: value, port };
-      const direct = await tcpCheck(value, port);
-      return { ...direct, host: value, port };
-    }
-    try {
-      const resolved = await dns.lookup(value);
-      const resolvedAddress = String(resolved.address || '');
-      if (!resolvedAddress) return { online: false, error: 'lookup_failed', host: value, port };
-      if (privateIp(resolvedAddress)) {
-        return { online: false, error: 'blocked-private-address', host: value, port };
-      }
-      // Connect to the already-validated IP to avoid a second DNS resolution step.
-      const direct = await tcpCheck(resolvedAddress, port);
-      return { ...direct, host: value, port };
-    } catch (error) {
-      return { online: false, error: error.code || error.message || 'lookup_failed', host: value, port };
-    }
+// Targets come from the active Caddy configuration. Private and loopback
+// addresses are expected for Docker, LXC, and LAN upstreams.
+async function probeTarget(host = '', port = 0) {
+  const value = String(host || '').trim();
+  if (!value) return { online: false, error: 'missing', host: '', port };
+  const ipVersion = net.isIP(value);
+  if (ipVersion > 0) {
+    const direct = await tcpCheck(value, port);
+    return { ...direct, host: value, port };
   }
+  try {
+    const resolved = await dns.lookup(value);
+    const resolvedAddress = String(resolved.address || '');
+    if (!resolvedAddress) return { online: false, error: 'lookup_failed', host: value, port };
+    const direct = await tcpCheck(resolvedAddress, port);
+    return { ...direct, host: value, port };
+  } catch (error) {
+    return { online: false, error: error.code || error.message || 'lookup_failed', host: value, port };
+  }
+}
 
+async function checkProxyHealth(parsed) {
   const results = {};
   await Promise.all(
     (parsed.sites || []).map(async (site) => {
       if (site.disabled) {
         results[site.id] = {
           local: { online: false, error: 'disabled', disabled: true, host: '', port: 0 },
-          domain: { online: false, error: 'disabled', disabled: true, host: splitHostPort(site.addresses?.[0] || '').host, port: 443 },
         };
         return;
       }
-      const domain = site.addresses?.[0] || '';
       const upstream = site.proxies?.[0]?.upstreams?.[0] || '';
       const target = splitHostPort(upstream);
-      const domainHost = splitHostPort(domain).host;
-      const [local, domainResult] = await Promise.all([
-        probeTarget(target.host, target.port),
-        probeTarget(domainHost, 443),
-      ]);
+      const local = await probeTarget(target.host, target.port);
       results[site.id] = {
         local,
-        domain: domainResult,
       };
     })
   );
@@ -1887,7 +1877,7 @@ app.post('/api/config', requireTrustedOrigin, auth, requirePermission('edit'), a
   }
 });
 
-app.get('/api/proxies/health', auth, requirePermission('edit'), async (_req, res) => {
+app.get('/api/proxies/health', auth, requirePermission('view'), requireRateLimit('proxies-health', 30, 60_000), async (_req, res) => {
   try {
     const { content } = await readWorkingConfig();
     const parsed = await parseConfigWithMeta(content);
@@ -2597,6 +2587,12 @@ if (process.env.NODE_ENV === 'production') {
 
 loadSettings().catch(() => {});
 
-app.listen(PORT, () => {
-  console.log(`CaddyUI API listening on :${PORT}`);
-});
+const isRunningUnderVitest = process.env.VITEST === 'true' || Boolean(import.meta.vitest);
+
+export { probeTarget, tcpCheck, checkProxyHealth };
+
+if (!isRunningUnderVitest) {
+  app.listen(PORT, () => {
+    console.log(`CaddyUI API listening on :${PORT}`);
+  });
+}

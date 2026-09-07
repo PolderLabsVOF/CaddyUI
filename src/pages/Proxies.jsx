@@ -19,6 +19,7 @@ import {
 } from '../components/common.jsx';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
+export const HEALTH_POLL_INTERVAL_MS = 30_000;
 
 const compareText = (a, b) => String(a || '').toLowerCase().localeCompare(String(b || '').toLowerCase());
 const compareBool = (a, b) => Number(Boolean(a)) - Number(Boolean(b));
@@ -141,7 +142,7 @@ function TagAutoCompleteInput({ value, onChange, suggestions, placeholder = '' }
   );
 }
 
-export default function Proxies({ config, refresh, setConfig, canEdit, theme, health, loading, api, onConfigChanged }) {
+export default function Proxies({ config, refresh, refreshHealth, setConfig, canEdit, theme, health, loading, api, onConfigChanged }) {
   const empty = { host: '', upstream: '', description: '', category: '', tags: '', imports: '', logMode: 'none', logPath: '' };
   const [form, setForm] = useState(empty);
   const [edit, setEdit] = useState(null);
@@ -154,6 +155,12 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
   const [busy, setBusy] = useState(false);
   const [renderLimits, setRenderLimits] = useState({});
   const [showCreate, setShowCreate] = useState(false);
+
+  useEffect(() => {
+    if (localTest || !refreshHealth) return undefined;
+    const interval = window.setInterval(refreshHealth, HEALTH_POLL_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [refreshHealth]);
 
   const sites = config?.parsed?.sites || [];
   const snippets = config?.parsed?.snippets || [];
@@ -591,7 +598,6 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
                 <button type="button" className={`table-sort ${sort.key === 'host' ? 'active' : ''}`} onClick={() => toggleSort('host')}>Host{sortArrow('host')}</button>
                 <button type="button" className={`table-sort ${sort.key === 'upstream' ? 'active' : ''}`} onClick={() => toggleSort('upstream')}>Upstream{sortArrow('upstream')}</button>
                 <button type="button" className={`table-sort ${sort.key === 'local' ? 'active' : ''}`} onClick={() => toggleSort('local')}>Local{sortArrow('local')}</button>
-                <span>State</span>
                 <button type="button" className={`table-sort ${sort.key === 'category' ? 'active' : ''}`} onClick={() => toggleSort('category')}>Category{sortArrow('category')}</button>
                 <button type="button" className={`table-sort ${sort.key === 'tags' ? 'active' : ''}`} onClick={() => toggleSort('tags')}>Tags{sortArrow('tags')}</button>
                 <button type="button" className={`table-sort ${sort.key === 'imports' ? 'active' : ''}`} onClick={() => toggleSort('imports')}>Imports{sortArrow('imports')}</button>
@@ -608,7 +614,7 @@ export default function Proxies({ config, refresh, setConfig, canEdit, theme, he
                   onDelete={(e) => setConfirmDelete(deleteConfirm(e, 'Delete proxy', site.addresses[0], () => deleteProxy(site)))}
                 />
               ))}
-              {(renderLimits[groupName] || 0) < items.length && <div className="proxy-row-skeleton"><span /><span /><span /><span /><span /><span /><span /><span /></div>}
+              {(renderLimits[groupName] || 0) < items.length && <div className="proxy-row-skeleton"><span /><span /><span /><span /><span /><span /><span /></div>}
             </details>
           );
         })}

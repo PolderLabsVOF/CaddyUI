@@ -438,6 +438,7 @@ export default function App() {
         <Proxies
           config={config}
           refresh={refreshConfig}
+          refreshHealth={refreshHealth}
           setConfig={setConfig}
           canEdit={canEdit}
           theme={theme}

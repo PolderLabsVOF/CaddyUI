@@ -434,6 +434,19 @@ p {
   color: var(--bad);
 }
 
+.status-dot.pending {
+  color: var(--muted);
+}
+
+.status-dot.pending::before {
+  background: currentColor;
+  animation: status-pulse 1.35s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  50% { opacity: .35; transform: scale(.72); }
+}
+
 .status-dot.disabled {
   color: var(--muted);
 }
@@ -598,6 +611,8 @@ label {
 
 .proxy-group {
   overflow: visible;
+  border-radius: var(--radius-lg);
+  background-clip: padding-box;
 }
 
 .proxy-group-head {
@@ -608,6 +623,13 @@ label {
   border-bottom: 1px solid var(--line);
   background: var(--surface-2);
   border-left: 3px solid var(--accent);
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+  overflow: hidden;
+}
+
+.proxy-group:not([open]) .proxy-group-head {
+  border-bottom: 0;
+  border-radius: calc(var(--radius-lg) - 1px);
 }
 
 .proxy-group-head h3 {
@@ -618,7 +640,7 @@ label {
 .proxy-table-head,
 .proxy-row-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 76px 88px minmax(0, 0.8fr) minmax(0, 0.85fr) minmax(0, 0.9fr) 210px;
+  grid-template-columns: minmax(190px, 1.2fr) minmax(170px, 1fr) 76px minmax(100px, 0.7fr) minmax(110px, 0.8fr) minmax(110px, 0.85fr) 44px;
   column-gap: 10px;
   align-items: center;
 }
@@ -657,6 +679,10 @@ label {
   border-bottom: 0;
 }
 
+.proxy-row:last-child .proxy-row-main {
+  border-radius: 0 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px);
+}
+
 .proxy-row-main {
   padding: 8px 14px;
   min-height: 44px;
@@ -674,7 +700,7 @@ label {
 
 .proxy-row-skeleton {
   display: grid;
-  grid-template-columns: minmax(220px, 1.25fr) minmax(220px, 1fr) 76px 88px minmax(140px, 0.8fr) minmax(160px, 0.9fr) minmax(180px, 0.9fr) 210px;
+  grid-template-columns: minmax(190px, 1.2fr) minmax(170px, 1fr) 76px minmax(100px, 0.7fr) minmax(110px, 0.8fr) minmax(110px, 0.85fr) 44px;
   gap: 10px;
   padding: 8px 14px;
   border: 1px solid var(--line);
@@ -759,13 +785,81 @@ label {
   gap: 6px;
   justify-content: flex-end;
   justify-self: end;
-  min-width: 210px;
+  min-width: 0;
   flex-wrap: nowrap;
+  position: relative;
 }
 
 .row-actions button {
   min-height: 34px;
   padding: 6px 10px;
+}
+
+.row-menu-trigger {
+  display: inline-flex;
+  width: 34px;
+  min-width: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.row-menu-trigger:hover,
+.row-menu-trigger[aria-expanded='true'] {
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.row-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 5px);
+  right: 0;
+  display: grid;
+  min-width: 168px;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: 0 16px 38px var(--shadow);
+}
+
+.row-menu-item {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  padding: 7px 9px !important;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.row-menu-item:hover {
+  background: var(--accent-soft);
+}
+
+.row-menu-item.danger {
+  color: var(--bad);
+}
+
+.row-menu-item.danger:hover {
+  background: var(--bad-soft);
+}
+
+.proxy-meta-value {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .middleware-form {
@@ -1812,10 +1906,10 @@ label {
 
   .proxy-table-head,
   .proxy-row-main {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px 86px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 210px;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 72px minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 0.85fr) 44px;
   }
   .proxy-row-skeleton {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px 86px minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 210px;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 72px minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 0.85fr) 44px;
   }
 
   .users-add {
@@ -2045,20 +2139,25 @@ label {
   }
 
   .row-actions {
-    justify-content: flex-start;
-    justify-self: stretch;
+    justify-content: flex-end;
+    justify-self: end;
     min-width: 0;
-    width: 100%;
-    overflow-x: auto;
-    padding-top: 6px;
-    border-top: 1px solid var(--line);
-    margin-top: 4px;
-    gap: 8px;
+    width: auto;
+    overflow: visible;
+    padding-top: 0;
+    border-top: 0;
+    margin-top: 2px;
   }
 
   .row-actions button {
     flex: 0 0 auto;
     white-space: nowrap;
+  }
+
+  .row-menu {
+    top: auto;
+    right: 0;
+    bottom: calc(100% + 5px);
   }
 
   .settings-subnav {
