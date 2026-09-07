@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: nightly-dev-build
+  cancel-in-progress: false
+
 jobs:
   nightly:
     runs-on: ubuntu-latest
