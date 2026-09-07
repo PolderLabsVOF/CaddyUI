@@ -32,17 +32,19 @@ jobs:
           git archive HEAD | tar -x -C nightly-stage/caddyui-nightly
           printf '%s\n' '${{ steps.revision.outputs.commit }}' > nightly-stage/caddyui-nightly/.caddyui-nightly-commit
           tar -C nightly-stage -czf "caddyui-nightly-${{ steps.revision.outputs.commit }}.tar.gz" caddyui-nightly
+          sha256sum "caddyui-nightly-${{ steps.revision.outputs.commit }}.tar.gz" > "caddyui-nightly-${{ steps.revision.outputs.commit }}.tar.gz.sha256"
       - name: Publish the rolling nightly release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           commit='${{ steps.revision.outputs.commit }}'
           asset="caddyui-nightly-${commit}.tar.gz"
+          checksum="${asset}.sha256"
           if gh release view nightly >/dev/null 2>&1; then
-            gh release upload nightly "$asset" --clobber
+            gh release upload nightly "$asset" "$checksum" --clobber
             git tag -f nightly "$commit"
             git push --force origin refs/tags/nightly
             gh release edit nightly --target "$commit" --title "Nightly dev build" --prerelease --notes "Latest successful dev nightly: $commit"
           else
-            gh release create nightly "$asset" --target "$commit" --title "Nightly dev build" --prerelease --notes "Latest successful dev nightly: $commit"
+            gh release create nightly "$asset" "$checksum" --target "$commit" --title "Nightly dev build" --prerelease --notes "Latest successful dev nightly: $commit"
           fi

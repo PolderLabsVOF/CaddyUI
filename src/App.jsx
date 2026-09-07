@@ -92,6 +92,7 @@ export default function App() {
   const role = settings?.role || '';
   const canEdit = canEditRole(role) || localTest;
   const canAdmin = canAdminRole(role) || localTest;
+  const activeUpdateStepIndex = UPDATE_STEPS.findIndex(([phase]) => phase === updateProgress.phase);
 
   const dismissNotification = (id) => {
     setNotifications((current) => current.filter((notification) => notification.id !== id));
@@ -290,7 +291,7 @@ export default function App() {
               percent: Math.max(current.percent, progress.percent),
               phase: progress.phase,
             }));
-            setUpdateMessage(progress.message || updateMessage);
+            setUpdateMessage((current) => progress.message || current);
           }
           const status = await api('/api/app/check-updates', {
             method: 'POST',
@@ -403,8 +404,7 @@ export default function App() {
             </div>
             <ol className="update-steps">
               {UPDATE_STEPS.map(([phase, label], index) => {
-                const activeIndex = UPDATE_STEPS.findIndex(([key]) => key === updateProgress.phase);
-                return <li key={phase} className={activeIndex > index ? 'complete' : activeIndex === index ? 'active' : ''}><span>{activeIndex > index ? '✓' : index + 1}</span>{label}</li>;
+                return <li key={phase} className={activeUpdateStepIndex > index ? 'complete' : activeUpdateStepIndex === index ? 'active' : ''}><span>{activeUpdateStepIndex > index ? '✓' : index + 1}</span>{label}</li>;
               })}
             </ol>
             <small>Progress only advances when the installer reports a completed phase. Elapsed time continues while CaddyUI restarts.</small>

@@ -1265,15 +1265,32 @@ async function latestSuccessfulDevNightly() {
   const release = await response.json();
   const commit = String(release.target_commitish || '').trim();
   const assetName = `${DEV_NIGHTLY_ASSET_PREFIX}${commit}.tar.gz`;
+  const checksumName = `${assetName}.sha256`;
   const expectedAssetUrl = `https://github.com/${GITHUB_REPOSITORY}/releases/download/${DEV_NIGHTLY_TAG}/${assetName}`;
+  const expectedChecksumUrl = `https://github.com/${GITHUB_REPOSITORY}/releases/download/${DEV_NIGHTLY_TAG}/${checksumName}`;
   const asset = Array.isArray(release.assets)
     ? release.assets.find((item) => item?.name === assetName)
     : null;
+  const checksumAsset = Array.isArray(release.assets)
+    ? release.assets.find((item) => item?.name === checksumName)
+    : null;
   const assetUrl = String(asset?.browser_download_url || '').trim();
-  const digest = String(asset?.digest || '').replace(/^sha256:/i, '').trim().toLowerCase();
+  const checksumUrl = String(checksumAsset?.browser_download_url || '').trim();
   if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('The dev nightly release does not identify an immutable commit.');
   if (assetUrl !== expectedAssetUrl) throw new Error('The dev nightly release is missing its commit-addressed update archive.');
-  if (!/^[0-9a-f]{64}$/.test(digest)) throw new Error('The dev nightly release is missing a valid SHA-256 archive digest.');
+  if (checksumUrl !== expectedChecksumUrl) throw new Error('The dev nightly release is missing its checksum asset.');
+  let checksumResponse;
+  try {
+    checksumResponse = await fetch(checksumUrl, {
+      headers: { 'User-Agent': 'CaddyUI-updater' },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (error) {
+    throw new Error(`Unable to download the dev nightly checksum: ${error.message}`);
+  }
+  if (!checksumResponse.ok) throw new Error(`Unable to download the dev nightly checksum (GitHub returned ${checksumResponse.status}).`);
+  const digest = (await checksumResponse.text()).match(/\b([a-f0-9]{64})\b/i)?.[1]?.toLowerCase() || '';
+  if (!/^[0-9a-f]{64}$/.test(digest)) throw new Error('The dev nightly checksum asset is invalid.');
 
   return {
     commit,

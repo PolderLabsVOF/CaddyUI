@@ -760,7 +760,7 @@ install_dev_nightly() {
   has_cmd sha256sum || fail "sha256sum is required to verify the dev nightly archive."
 
   temp_dir="$(mktemp -d)"
-  archive="$temp_dir/$DEV_NIGHTLY_ASSET"
+  archive="$temp_dir/${DEV_NIGHTLY_ASSET_PREFIX}${DEV_NIGHTLY_COMMIT}.tar.gz"
   step "Downloading latest successful dev nightly"
   run_quiet curl --fail --location --retry 3 --output "$archive" "$DEV_NIGHTLY_URL" || { rm -rf "$temp_dir"; fail "Unable to download the dev nightly archive."; }
   digest="$(sha256sum "$archive" | awk '{print $1}')"
