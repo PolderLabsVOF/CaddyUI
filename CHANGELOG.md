@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.20-beta - 2026-09-07
 
 - Make API-mode installs durable by switching to `caddy-api.service` and applying installer-created proxies through Caddy's Admin API.
 - Add a TLS dashboard with live certificate checks and global ACME settings.
