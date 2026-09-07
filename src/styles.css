@@ -1255,18 +1255,19 @@ label {
 }
 
 .middleware-edit-modal {
-  width: min(1280px, 100%);
+  width: min(920px, 100%);
 }
 
 .middleware-edit-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr) minmax(260px, 0.8fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
 }
 .middleware-dialog-actions { display: grid; gap: 7px; margin-top: 16px; }
 .middleware-dialog-actions .danger { justify-content: flex-start; }
 .middleware-preview-help { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
-.config-mode-tabs { display: flex; gap: 7px; margin: 0 0 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.config-mode-tabs { display: flex; gap: 7px; margin: 0; padding: 0 0 14px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+.config-mode-tabs button { flex: 0 0 auto; }
 .config-mode-tabs button.active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text); }
 .proxy-enabled-toggle { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 13px; font-weight: 700; }
 .proxy-enabled-toggle input { width: auto; }
@@ -1730,16 +1731,17 @@ label {
 }
 
 .proxy-edit-modal {
-  width: min(1180px, 100%);
+  width: min(920px, 100%);
 }
 
 .proxy-edit-layout {
   display: grid;
-  grid-template-columns: 1.15fr 1fr 0.85fr;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
 }
 
 .proxy-edit-card {
+  width: min(100%, 760px);
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--line);
@@ -1749,6 +1751,11 @@ label {
   gap: 12px;
   align-content: start;
 }
+
+.middleware-edit-layout .proxy-edit-card { width: min(100%, 760px); }
+.middleware-usage-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-height: 216px; overflow: auto; padding-right: 4px; }
+.middleware-usage-chips span { padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 11px; line-height: 1.25; }
+.edit-modal > .toolbar { position: sticky; bottom: -22px; z-index: 2; margin: 0 -22px -22px; padding: 14px 22px 18px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); }
 
 .proxy-edit-card-compact {
   padding: 0;

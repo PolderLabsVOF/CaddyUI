@@ -669,7 +669,7 @@ export default function Middlewares({ config, setConfig, canEdit, theme, api, on
                 </div>
                 <div className="middleware-usage-list">
                   <h4>Imported by</h4>
-                  <p>{edit.usedBy?.join(', ') || 'Unused right now.'}</p>
+                  {edit.usedBy?.length ? <div className="middleware-usage-chips">{edit.usedBy.map((host) => <span key={host}>{host}</span>)}</div> : <p>Unused right now.</p>}
                 </div>
                 <div className="middleware-dialog-actions"><button type="button" onClick={() => copyImportStatement(edit)}><Copy size={14} />Copy import</button><button type="button" onClick={() => duplicateSnippet(edit)}><Layers3 size={14} />Duplicate</button>{canEdit && <button type="button" className="danger" onClick={(event) => setConfirmDelete(deleteConfirm(event, 'Delete middleware', edit.name, () => deleteMiddleware(edit)))}>Delete</button>}</div>
               </div>
