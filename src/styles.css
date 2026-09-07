@@ -370,6 +370,44 @@ p {
   margin-bottom: 14px;
 }
 
+.analytics-head { align-items: flex-end; }
+.analytics-actions { display: flex; align-items: center; gap: 6px; }
+.analytics-actions button.active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text); }
+.analytics-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.analytics-kpis article, .analytics-panel { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.analytics-kpis article { display: flex; gap: 12px; min-width: 0; padding: 16px; }
+.analytics-kpis article > div { display: grid; gap: 3px; min-width: 0; }
+.analytics-kpis strong { font-size: clamp(21px, 2vw, 28px); letter-spacing: -0.03em; }
+.analytics-kpis span:not(.analytics-icon), .analytics-kpis small { color: var(--muted); font-size: 12px; }
+.analytics-icon { display: grid; flex: 0 0 38px; width: 38px; height: 38px; place-items: center; border: 1px solid var(--accent-line); border-radius: var(--radius); color: var(--accent); background: var(--accent-soft); }
+.analytics-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, .8fr); gap: 14px; }
+.analytics-panel { min-width: 0; padding: 17px; }
+.analytics-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.analytics-panel-head h3 { margin-bottom: 4px; font-size: 16px; }
+.analytics-panel-head p { margin-bottom: 0; font-size: 12px; }
+.traffic-chart-wrap { position: relative; min-height: 256px; margin-top: 10px; padding: 10px 0 28px 34px; }
+.traffic-chart { display: block; width: 100%; height: 218px; overflow: visible; }
+.traffic-chart line { stroke: color-mix(in srgb, var(--line) 78%, transparent); stroke-width: .4; vector-effect: non-scaling-stroke; }
+.traffic-chart-scale { position: absolute; inset: 9px auto 28px 0; display: flex; flex-direction: column; justify-content: space-between; color: var(--muted); font-size: 11px; }
+.traffic-chart-labels { display: flex; justify-content: space-between; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.chart-legend { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.chart-legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.status-panel { display: grid; align-content: start; }
+.status-breakdown { display: grid; gap: 14px; margin-top: 24px; }
+.status-breakdown > div { display: grid; gap: 7px; }
+.status-breakdown > div > div:first-child { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; }
+.status-code { color: var(--text); font-weight: 750; }
+.status-2xx { color: var(--ok); }.status-3xx { color: #60a5fa; }.status-4xx { color: #f59e0b; }.status-5xx { color: var(--bad); }
+.status-bar { height: 7px; overflow: hidden; border-radius: 999px; background: var(--surface-2); }
+.status-bar span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.hosts-panel { grid-column: 1 / -1; }
+.host-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 15px 0 0; padding: 0; list-style: none; }
+.host-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; align-items: center; min-width: 0; padding: 11px 0; border-top: 1px solid var(--line); }
+.host-list strong, .host-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-list strong { font-size: 13px; }.host-list small, .host-share, .analytics-note { color: var(--muted); font-size: 11px; }
+.host-rank { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 700; }
+.host-share { font-weight: 700; }.analytics-empty { color: var(--muted); font-size: 13px; }.analytics-note { margin: 10px 0 0; }
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1941,6 +1979,9 @@ label {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .analytics-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .host-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
   .proxy-edit-layout,
   .middleware-builder,
   .middleware-edit-layout,
@@ -2017,6 +2058,10 @@ label {
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .analytics-head { align-items: flex-start; }
+  .analytics-grid { grid-template-columns: 1fr; }
+  .hosts-panel { grid-column: auto; }
 
   .stats {
     grid-template-columns: repeat(2, 1fr);

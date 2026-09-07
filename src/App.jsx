@@ -6,6 +6,7 @@ import './styles.css';
 import Proxies from './pages/Proxies.jsx';
 import Middlewares from './pages/Middlewares.jsx';
 import Logs from './pages/Logs.jsx';
+import Analytics from './pages/Analytics.jsx';
 import Tls from './pages/Tls.jsx';
 import CaddyRuntime from './pages/CaddyRuntime.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
@@ -469,6 +470,7 @@ export default function App() {
       )}
       {page === 'caddy' && <CaddyRuntime api={api} canEdit={canEdit} canAdmin={canAdmin} theme={theme} notify={pushNotification} />}
       {page === 'tls' && <Tls api={api} canAdmin={canAdmin} setConfig={setConfig} onConfigChanged={notifyConfigChangedNeedsReload} />}
+      {page === 'analytics' && <Analytics api={api} />}
       {page === 'logs' && <Logs api={api} />}
       {page === 'settings' && (
         <SettingsPage settings={settings} setSettings={setSettings} canEdit={canEdit} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} theme={theme} setTheme={setTheme} accent={accent} setAccent={setAccent} />

@@ -1106,6 +1106,57 @@ async function collectLogs(settings, lines = 200) {
   return entries;
 }
 
+function parseCaddyAccessLog(line) {
+  try {
+    const record = JSON.parse(line);
+    const request = record.request || {};
+    const status = Number(record.status);
+    const timestamp = typeof record.ts === 'number' ? record.ts * 1000 : Date.parse(record.ts || record.time);
+    if (!request.host || !Number.isFinite(status) || !Number.isFinite(timestamp)) return null;
+    return {
+      timestamp,
+      host: String(request.host),
+      status,
+      bytes: Math.max(0, Number(record.size || record.bytes_written || 0) || 0),
+      duration: Math.max(0, Number(record.duration || record.duration_ns / 1e9 || 0) || 0),
+      visitor: String(request.remote_ip || request.client_ip || ''),
+    };
+  } catch { return null; }
+}
+
+async function trafficAnalytics(settings, range) {
+  const hours = range === '7d' ? 168 : 24;
+  const now = Date.now();
+  const interval = range === '7d' ? 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
+  const start = now - hours * 60 * 60 * 1000;
+  const buckets = Array.from({ length: range === '7d' ? 7 : 24 }, (_, index) => ({ start: new Date(now - (range === '7d' ? 6 - index : 23 - index) * interval).setMinutes(0, 0, 0), requests: 0 }));
+  const hosts = new Map(); const statusCodes = new Map(); const visitors = new Set();
+  let requests = 0; let errors = 0; let bytes = 0; let totalDuration = 0; let unparsedLines = 0;
+  const logs = await collectLogs({ ...settings, logMode: 'files' }, 2000);
+  for (const entry of logs) {
+    for (const line of String(entry.content || '').split('\n')) {
+      if (!line.trim()) continue;
+      const record = parseCaddyAccessLog(line);
+      if (!record) { unparsedLines += 1; continue; }
+      if (record.timestamp < start || record.timestamp > now + 60_000) continue;
+      requests += 1; bytes += record.bytes; totalDuration += record.duration;
+      if (record.status >= 400) errors += 1;
+      if (record.visitor) visitors.add(record.visitor);
+      const bucketIndex = Math.min(buckets.length - 1, Math.max(0, Math.floor((record.timestamp - start) / interval)));
+      buckets[bucketIndex].requests += 1;
+      const host = hosts.get(record.host) || { name: record.host, requests: 0, bytes: 0 };
+      host.requests += 1; host.bytes += record.bytes; hosts.set(record.host, host);
+      statusCodes.set(record.status, (statusCodes.get(record.status) || 0) + 1);
+    }
+  }
+  return {
+    requests, errors, bytes, uniqueVisitors: visitors.size, averageDuration: requests ? totalDuration / requests : 0, buckets,
+    hosts: [...hosts.values()].sort((a, b) => b.requests - a.requests).slice(0, 5),
+    statusCodes: [...statusCodes.entries()].map(([code, count]) => ({ code, count })).sort((a, b) => a.code - b.code),
+    unparsedLines,
+  };
+}
+
 async function validateConfig(content) {
   const tmp = path.join(os.tmpdir(), `caddyui-${process.pid}-${Date.now()}-${randomUUID()}.Caddyfile`);
   await fs.writeFile(tmp, content, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
@@ -2145,6 +2196,11 @@ app.get('/api/logs', auth, requirePermission('view'), async (req, res) => {
   const bounded = Number.isFinite(requested) ? Math.max(10, Math.min(2000, Math.floor(requested))) : 200;
   const mode = ['all', 'files', 'journal'].includes(String(req.query.mode || 'all')) ? String(req.query.mode || 'all') : 'all';
   res.json({ logs: await collectLogs({ ...settings, logMode: mode }, bounded) });
+});
+
+app.get('/api/analytics', auth, requirePermission('view'), async (req, res) => {
+  const range = req.query.range === '7d' ? '7d' : '24h';
+  res.json(await trafficAnalytics(await loadSettings(), range));
 });
 
 app.get('/api/events', auth, requirePermission('view'), async (req, res) => {
