@@ -1631,6 +1631,22 @@ label {
   width: min(560px, 100%);
 }
 
+.update-confirm-modal { width: min(590px, 100%); }
+.update-confirm-modal .modal-head > div { display: grid; gap: 3px; }
+.update-confirm-modal .modal-head .eyebrow { margin: 0; }
+.update-confirm-modal > p { margin: 4px 0 2px; color: var(--muted); line-height: 1.55; }
+.update-confirm-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 12px 0 4px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--line); }
+.update-confirm-summary > div { min-width: 0; padding: 12px 13px; background: var(--surface-2); }
+.update-confirm-summary dt { margin-bottom: 5px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.update-confirm-summary dd { margin: 0; overflow: hidden; color: var(--text); font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.update-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; }
+
+@media (max-width: 520px) {
+  .update-confirm-summary { grid-template-columns: 1fr; }
+  .update-confirm-actions { display: grid; grid-template-columns: 1fr; }
+  .update-confirm-actions .primary { grid-row: 1; }
+}
+
 .modal-head {
   display: flex;
   align-items: center;

@@ -9,7 +9,7 @@ import Logs from './pages/Logs.jsx';
 import Tls from './pages/Tls.jsx';
 import CaddyRuntime from './pages/CaddyRuntime.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
-import { AuthGate, Notice, ReloadConfirmModal, Shell } from './components/common.jsx';
+import { AuthGate, Notice, ReloadConfirmModal, Shell, UpdateConfirmModal } from './components/common.jsx';
 import AiAssistant from './components/AiAssistant.jsx';
 
 const APP_VERSION = pkg.version;
@@ -104,6 +104,7 @@ export default function App() {
   const [updateProgress, setUpdateProgress] = useState({ percent: 0, phase: 'target', elapsedSeconds: 0 });
   const [caddyBusy, setCaddyBusy] = useState(false);
   const [reloadConfirmOpen, setReloadConfirmOpen] = useState(false);
+  const [updateConfirmOpen, setUpdateConfirmOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [configLoading, setConfigLoading] = useState(false);
 
@@ -282,6 +283,7 @@ export default function App() {
     }
   };
   const runUpdate = async () => {
+    setUpdateConfirmOpen(false);
     setUpdating(true);
     setUpdateMessage('Preparing update...');
     setUpdateProgress({ percent: 6, phase: 'target', elapsedSeconds: 0 });
@@ -404,7 +406,7 @@ export default function App() {
       setTheme={setTheme}
       appInfo={appInfo}
       onCheckUpdates={checkUpdates}
-      onRunUpdate={runUpdate}
+      onRunUpdate={() => setUpdateConfirmOpen(true)}
       canUpdate={canAdmin}
       checkingUpdates={checkingUpdates}
       updating={updating}
@@ -476,6 +478,14 @@ export default function App() {
         busy={caddyBusy}
         onCancel={() => setReloadConfirmOpen(false)}
         onConfirm={reloadCaddyGlobal}
+      />
+      <UpdateConfirmModal
+        open={updateConfirmOpen}
+        currentVersion={appInfo?.version || appInfo?.localVersion || APP_VERSION}
+        targetVersion={appInfo?.availableVersion || appInfo?.remoteVersion || ''}
+        channel={settings?.updateChannel || 'stable'}
+        onCancel={() => setUpdateConfirmOpen(false)}
+        onConfirm={runUpdate}
       />
       <AiAssistant
         api={api}

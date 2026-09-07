@@ -8,6 +8,7 @@
 - Load the CaddyUI skill into every built-in assistant provider request and add regression coverage that prevents raw Caddy configuration from reaching the model.
 - Add polished appearance controls with persistent light/dark mode and five browser-local accent choices.
 - Add project source and license information to Settings → About.
+- Add an update confirmation dialog showing the current version, target version, and selected channel before installation begins.
 
 ### Changed
 

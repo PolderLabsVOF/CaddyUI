@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, LogOut, Menu, MessageSquare, Moon, MoreHorizontal, Pencil, Power, RefreshCw, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun, Trash2, X } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Download, FileCode2, KeyRound, Layers3, Loader2, LogOut, Menu, MessageSquare, Moon, MoreHorizontal, Pencil, Power, RefreshCw, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun, Trash2, X } from 'lucide-react';
 import { updateSimpleProxy } from '../../server/caddyParser.js';
 
 export const pageItems = [
@@ -190,6 +190,36 @@ export function ConfirmModal({ confirm, onCancel, onConfirm }) {
 export function ReloadConfirmModal({ open, busy, onCancel, onConfirm }) {
   if (!open) return null;
   return <div className="modal-backdrop" onMouseDown={onCancel}><div className="edit-modal" onMouseDown={(e) => e.stopPropagation()}><div className="modal-head"><h3>Reload Caddy</h3></div><p>Apply current configuration and reload now?</p><div className="toolbar"><button className="primary" onClick={onConfirm} disabled={busy}>{busy ? 'Reloading...' : 'Reload'}</button><button onClick={onCancel} disabled={busy}>Cancel</button></div></div></div>;
+}
+
+export function UpdateConfirmModal({ open, currentVersion, targetVersion, channel, onCancel, onConfirm }) {
+  if (!open) return null;
+  const versionLabel = (value) => String(value || '').startsWith('v') ? String(value) : `v${value}`;
+  const current = currentVersion ? versionLabel(currentVersion) : 'Unknown';
+  const target = targetVersion ? versionLabel(targetVersion) : 'Latest verified build';
+  return (
+    <div className="modal-backdrop" onMouseDown={onCancel}>
+      <div className="edit-modal update-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">Software update</span>
+            <h3 id="update-confirm-title">Start CaddyUI update?</h3>
+          </div>
+          <button type="button" onClick={onCancel}>Cancel</button>
+        </div>
+        <p>CaddyUI will download the verified build, rebuild the interface, and restart its service. The control panel will be briefly unavailable.</p>
+        <dl className="update-confirm-summary">
+          <div><dt>Current</dt><dd>{current}</dd></div>
+          <div><dt>Target</dt><dd>{target}</dd></div>
+          <div><dt>Channel</dt><dd>{channel || 'stable'}</dd></div>
+        </dl>
+        <div className="update-confirm-actions">
+          <button type="button" onClick={onCancel}>Keep current version</button>
+          <button type="button" className="primary" onClick={onConfirm}><Download size={16} />Start update</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function TypedConfirmModal({ open, busy, title, message, username, typedValue, onTypedValueChange, confirmLabel = 'Confirm', onCancel, onConfirm }) {
