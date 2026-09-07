@@ -1763,6 +1763,9 @@ label {
 .proxy-edit-card .import-dropdown { max-width: 760px; }
 .proxy-advanced-editor { padding: 4px 0 0; }
 .proxy-advanced-editor .raw-proxy-editor { margin-top: 4px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.proxy-advanced-controls { display: grid; grid-template-columns: minmax(190px, .75fr) minmax(220px, 1fr) auto; align-items: end; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface-2); }
+.proxy-advanced-controls label { min-width: 0; }
+.proxy-advanced-controls button { min-height: 40px; }
 .middleware-preview-card pre { max-width: 100%; min-height: 420px; max-height: 52dvh; }
 .middleware-usage-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-height: 216px; overflow: auto; padding-right: 4px; }
 .middleware-usage-chips span { padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 11px; line-height: 1.25; }
@@ -2649,6 +2652,8 @@ p { text-wrap: pretty; }
   .tls-layout, .tls-side { grid-template-columns: 1fr; }
   .tls-panel { padding: 15px; }
   .edit-modal { width: 100%; min-height: 0; max-height: calc(100dvh - 16px); padding: 16px; border-radius: 18px 18px 0 0; }
+  .proxy-advanced-controls { grid-template-columns: 1fr; }
+  .proxy-advanced-controls button { width: 100%; }
   .modal-backdrop { align-items: end; padding: 8px 8px 0; }
   .toast-stack { top: 70px; }
   .ai-assistant-trigger { right: 14px; bottom: calc(77px + env(safe-area-inset-bottom)); width: 48px; height: 48px; }

@@ -24,6 +24,40 @@ export const HEALTH_POLL_INTERVAL_MS = 30_000;
 const compareText = (a, b) => String(a || '').toLowerCase().localeCompare(String(b || '').toLowerCase());
 const compareBool = (a, b) => Number(Boolean(a)) - Number(Boolean(b));
 
+function applyReverseProxyOptions(block = '', { policy = '', healthUri = '' } = {}) {
+  const lines = String(block).replace(/\r\n/g, '\n').split('\n');
+  const start = lines.findIndex((line) => /^\s*reverse_proxy\b/.test(line));
+  if (start < 0) return block;
+  if (!policy && !healthUri) return block;
+  const baseIndent = (lines[start].match(/^\s*/) || [''])[0];
+  const indent = `${baseIndent}\t`;
+  if (!lines[start].includes('{')) {
+    lines[start] = `${lines[start]} {`;
+    const directives = [policy && `lb_policy ${policy}`, healthUri && `health_uri ${healthUri}`]
+      .filter(Boolean)
+      .map((directive) => `${indent}${directive}`);
+    lines.splice(start + 1, 0, ...directives, `${baseIndent}}`);
+    return lines.join('\n');
+  }
+  let depth = 0; let end = -1;
+  for (let index = start; index < lines.length; index += 1) {
+    depth += (lines[index].match(/\{/g) || []).length - (lines[index].match(/\}/g) || []).length;
+    if (index > start && depth === 0) { end = index; break; }
+  }
+  if (end < 0) return block;
+  const replace = (name, value) => {
+    const found = lines.findIndex((line, index) => index > start && index < end && line.trim().startsWith(`${name} `));
+    // Empty controls preserve the existing directive; removal belongs in the
+    // full Caddyfile editor so a partial update cannot erase configuration.
+    if (!value) return;
+    if (found >= 0) lines[found] = `${indent}${name} ${value}`;
+    else { lines.splice(end, 0, `${indent}${name} ${value}`); end += 1; }
+  };
+  replace('lb_policy', policy);
+  replace('health_uri', healthUri);
+  return lines.join('\n');
+}
+
 function sortValue(site, key, health) {
   if (key === 'domain') return rootDomain(site.addresses?.[0]);
   if (key === 'host') return site.addresses?.[0] || '';
@@ -349,6 +383,8 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
       disabled: Boolean(site.disabled),
       tab: 'overview',
       rawOpen: false,
+      advancedPolicy: '',
+      advancedHealthUri: '',
       rawBlock: readBlockAtLine(config.content, site.line),
     });
   };
@@ -572,6 +608,11 @@ export default function Proxies({ config, refresh, refreshHealth, setConfig, can
             </div> : (
               <section className="proxy-advanced-editor">
                 <div><h4>Full proxy block</h4><p>Use any Caddyfile directive here—matchers, transports, header rules, load balancing, health checks, and more. The complete block is validated before it is applied.</p></div>
+                <div className="proxy-advanced-controls">
+                  <label>Load-balancing policy<select value={edit.advancedPolicy} onChange={(event) => setEdit((current) => ({ ...current, advancedPolicy: event.target.value }))}><option value="">Keep current policy</option><option value="round_robin">round_robin</option><option value="least_conn">least_conn</option><option value="random_choice">random_choice</option><option value="first">first</option><option value="ip_hash">ip_hash</option><option value="uri_hash">uri_hash</option></select></label>
+                  <label>Active health-check path<input value={edit.advancedHealthUri} onChange={(event) => setEdit((current) => ({ ...current, advancedHealthUri: event.target.value }))} placeholder="/healthz" /></label>
+                  <button type="button" onClick={() => setEdit((current) => ({ ...current, rawOpen: true, rawBlock: applyReverseProxyOptions(current.rawBlock || previewProxyBlock(config.content, current), { policy: current.advancedPolicy, healthUri: current.advancedHealthUri }) }))}>Apply to Caddyfile</button>
+                </div>
                 <div className="raw-proxy-editor">
                 <Editor height="360px" defaultLanguage="caddyfile" theme={theme === 'light' ? 'light' : 'vs-dark'} value={edit.rawBlock} onChange={(value) => setEdit({ ...edit, rawBlock: value || '' })} options={{ minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', scrollBeyondLastLine: false }} />
                 </div>

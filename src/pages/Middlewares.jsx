@@ -84,6 +84,10 @@ handle @preflight {
     label: 'header_up',
     body: `header_up X-Forwarded-Host {http.request.host}`,
   },
+  { key: 'header-down', label: 'header_down', body: 'header_down Server ""' },
+  { key: 'request-body', label: 'Request size limit', body: 'request_body {\n\tmax_size 10MB\n}' },
+  { key: 'encode', label: 'Compression', body: 'encode zstd gzip' },
+  { key: 'handle-path', label: 'Path handler', body: 'handle_path /api/* {\n\treverse_proxy 127.0.0.1:8080\n}' },
 ];
 
 function normalizeEditorBody(value = '') {
