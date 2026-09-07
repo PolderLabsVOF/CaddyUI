@@ -5,8 +5,12 @@ umask 077
 APP_NAME="CaddyUI"
 SCRIPT_CHANNEL="dev"
 INSTALLER_VERSION="2026.05.11-3"
-REPO_URL="https://github.com/DrB0rk/CaddyUI.git"
+REPO_URL="https://github.com/PolderLabsVOF/CaddyUI.git"
 BRANCH="${CADDYUI_BRANCH:-$SCRIPT_CHANNEL}"
+DEV_NIGHTLY_URL="${CADDYUI_DEV_NIGHTLY_URL:-}"
+DEV_NIGHTLY_COMMIT="${CADDYUI_DEV_NIGHTLY_COMMIT:-}"
+DEV_NIGHTLY_SHA256="${CADDYUI_DEV_NIGHTLY_SHA256:-}"
+DEV_NIGHTLY_ASSET_PREFIX="caddyui-nightly-"
 CONFIG_MODE="${CADDYUI_CONFIG_MODE:-}"
 CADDY_API_URL="${CADDYUI_CADDY_API_URL:-http://127.0.0.1:2019}"
 START_PORT="${CADDYUI_PORT:-8787}"
@@ -652,10 +656,15 @@ run_existing_update() {
   step "Existing installation detected"
   ok "Running in update mode"
   step "Updating source"
-  run_quiet git -C "$INSTALL_DIR" fetch --quiet origin "$BRANCH"
-  run_quiet git -C "$INSTALL_DIR" checkout --quiet "$BRANCH"
-  run_quiet git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH"
-  run_quiet git -C "$INSTALL_DIR" clean -fd -e data/ -e .env -e logs/ -e '*.log' -e '*.pid'
+  run_quiet git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL"
+  if [[ "$BRANCH" == "dev" && -n "$DEV_NIGHTLY_URL" ]]; then
+    install_dev_nightly
+  else
+    run_quiet git -C "$INSTALL_DIR" fetch --quiet origin "$BRANCH"
+    run_quiet git -C "$INSTALL_DIR" checkout --quiet "$BRANCH"
+    run_quiet git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH"
+    run_quiet git -C "$INSTALL_DIR" clean -fd -e data/ -e .env -e logs/ -e '*.log' -e '*.pid'
+  fi
   ok "Source updated"
   APP_VERSION="$(app_version_from_dir "$INSTALL_DIR")"
   ok "Installing app version $APP_VERSION"
@@ -696,6 +705,34 @@ run_existing_update() {
   printf "%b\n" "Install log: $INSTALL_LOG"
   printf "%b\n" "App log:     $APP_LOG"
   exit 0
+}
+
+install_dev_nightly() {
+  local temp_dir archive digest expected_url archive_commit
+  [[ "$DEV_NIGHTLY_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]] || fail "Dev nightly update is missing an immutable commit."
+  expected_url="https://github.com/PolderLabsVOF/CaddyUI/releases/download/nightly/${DEV_NIGHTLY_ASSET_PREFIX}${DEV_NIGHTLY_COMMIT}.tar.gz"
+  [[ "$DEV_NIGHTLY_URL" == "$expected_url" ]] || fail "Refusing an untrusted dev nightly download URL."
+  [[ "$DEV_NIGHTLY_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] || fail "Dev nightly update has an invalid archive digest."
+  has_cmd sha256sum || fail "sha256sum is required to verify the dev nightly archive."
+
+  temp_dir="$(mktemp -d)"
+  archive="$temp_dir/$DEV_NIGHTLY_ASSET"
+  step "Downloading latest successful dev nightly"
+  run_quiet curl --fail --location --retry 3 --output "$archive" "$DEV_NIGHTLY_URL" || { rm -rf "$temp_dir"; fail "Unable to download the dev nightly archive."; }
+  digest="$(sha256sum "$archive" | awk '{print $1}')"
+  [[ "$digest" == "$DEV_NIGHTLY_SHA256" ]] || { rm -rf "$temp_dir"; fail "Dev nightly archive digest verification failed."; }
+  tar -tzf "$archive" | grep -qx 'caddyui-nightly/package.json' || { rm -rf "$temp_dir"; fail "Dev nightly archive has an unexpected layout."; }
+  archive_commit="$(tar -xOf "$archive" caddyui-nightly/.caddyui-nightly-commit 2>/dev/null || true)"
+  [[ "$archive_commit" == "$DEV_NIGHTLY_COMMIT" ]] || { rm -rf "$temp_dir"; fail "Dev nightly archive does not match its advertised commit."; }
+
+  run_quiet git -C "$INSTALL_DIR" fetch --quiet origin dev
+  run_quiet git -C "$INSTALL_DIR" cat-file -e "$DEV_NIGHTLY_COMMIT^{commit}" || { rm -rf "$temp_dir"; fail "Dev nightly commit is not available from origin/dev."; }
+  run_quiet git -C "$INSTALL_DIR" checkout --quiet -B caddyui-nightly "$DEV_NIGHTLY_COMMIT"
+  run_quiet git -C "$INSTALL_DIR" reset --hard "$DEV_NIGHTLY_COMMIT"
+  run_quiet git -C "$INSTALL_DIR" clean -fd -e data/ -e .env -e logs/ -e '*.log' -e '*.pid'
+  tar -xzf "$archive" --strip-components=1 -C "$INSTALL_DIR" || { rm -rf "$temp_dir"; fail "Unable to extract the verified dev nightly archive."; }
+  rm -rf "$temp_dir"
+  ok "Installed verified dev nightly ${DEV_NIGHTLY_COMMIT:0:7}"
 }
 
 logo

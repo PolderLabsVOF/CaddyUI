@@ -25,10 +25,10 @@ Repository branch protection is configured on `dev`, `beta`, and `main`: a passi
 
 - `stable` fetches `main`.
 - `beta` fetches `beta`.
-- `dev` fetches `dev`.
+- `dev` fetches the commit-addressed archive from the latest successful rolling `nightly` release.
 
-The updater compares branch commits, not GitHub release tags. A release must therefore be present on the matching branch before users can see it in **Check update**.
+Stable and beta compare their branch commits. Dev compares its installed commit with the `nightly` release target, so it never installs an unchecked `dev` branch tip.
 
 ## Nightly development builds
 
-Every push to `dev` is verified. The nightly workflow also produces a dated development artifact from the latest `dev` commit; it is for testing only and does not create a GitHub release or mutate a version tag. Find it under the scheduled workflow run’s **Artifacts** section; artifacts are retained for 14 days.
+Every push to `dev` is verified. The scheduled or manually dispatched nightly workflow builds a source archive only after type checking, production build, and installer syntax validation have passed. It uploads an immutable archive named for the checked-out `dev` commit, then advances the rolling prerelease tag `nightly` to that same commit. The archive contains a commit manifest and GitHub’s SHA-256 asset digest is required before the updater installs it.
