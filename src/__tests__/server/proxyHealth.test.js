@@ -1,0 +1,89 @@
+vi.mock('sqlite3', () => ({ default: { Database: function Database() {} }, Database: function Database() {} }));
+vi.mock('sqlite', () => ({ open: () => Promise.resolve({ exec: async () => {}, run: async () => {}, get: async () => null, all: async () => [], close: async () => {} }) }));
+
+import net from 'node:net';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { caddyPathPart, checkProxyHealth, parseCaddyAccessLog, parsePrometheusMetrics, probeTarget } from '../../../server/index.js';
+
+let server;
+let port;
+
+describe('local proxy health', () => {
+  beforeAll(async () => {
+    server = net.createServer();
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    port = server.address().port;
+  });
+
+  afterAll(async () => {
+    if (server) await new Promise((resolve) => server.close(resolve));
+  });
+
+  test('allows loopback and private-network targets from the active Caddy config', async () => {
+    const result = await probeTarget('127.0.0.1', port);
+    expect(result).toMatchObject({ online: true, host: '127.0.0.1', port });
+    expect(result.error).not.toBe('blocked-private-address');
+  });
+
+  test('reports active and disabled sites without probing public domains', async () => {
+    const health = await checkProxyHealth({
+      sites: [
+        { id: 'active', disabled: false, addresses: ['example.invalid'], proxies: [{ upstreams: [`127.0.0.1:${port}`] }] },
+        { id: 'disabled', disabled: true, addresses: ['disabled.invalid'], proxies: [{ upstreams: ['10.0.0.2:8080'] }] },
+      ],
+    });
+    expect(health.active.local.online).toBe(true);
+    expect(health.active).not.toHaveProperty('domain');
+    expect(health.disabled.local).toMatchObject({ online: false, error: 'disabled' });
+  });
+});
+
+describe('Caddy Admin API helpers', () => {
+  test('encodes native config path segments and rejects traversal', () => {
+    expect(caddyPathPart(['apps', 'http', 'servers', 'public api'])).toBe('apps/http/servers/public%20api');
+    expect(() => caddyPathPart('apps/http/../stop')).toThrow(/invalid caddy api path/i);
+    expect(() => caddyPathPart('%2e%2e/stop')).toThrow(/invalid caddy api path/i);
+  });
+
+  test('parses Prometheus values without losing labels', () => {
+    const parsed = parsePrometheusMetrics([
+      '# HELP go_goroutines Number of goroutines.',
+      '# TYPE go_goroutines gauge',
+      'go_goroutines 42',
+      'caddy_http_requests_in_flight{server="srv0"} 3',
+      'process_start_time_seconds 1000',
+    ].join('\n'));
+
+    expect(parsed.samples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'go_goroutines', value: 42, help: 'Number of goroutines.', type: 'gauge' }),
+      expect.objectContaining({ name: 'caddy_http_requests_in_flight', value: 3, labels: { server: 'srv0' } }),
+    ]));
+    expect(parsed.summary).toMatchObject({ goroutines: 42, requestsInFlight: 3, processStartTime: 1000 });
+  });
+});
+
+describe('traffic analytics log parsing', () => {
+  test('accepts Caddy JSON access logs, including journal-prefixed entries', () => {
+    const entry = '2026-09-07T13:20:00+00:00 host caddy[21]: {"ts":1788787200,"request":{"host":"example.test","remote_ip":"203.0.113.9"},"status":201,"size":512,"duration":0.032}';
+
+    expect(parseCaddyAccessLog(entry)).toMatchObject({
+      host: 'example.test',
+      visitor: '203.0.113.9',
+      status: 201,
+      bytes: 512,
+      duration: 0.032,
+    });
+  });
+
+  test('accepts common access-log lines when JSON logging is not enabled', () => {
+    const entry = '203.0.113.9 - - [07/Sep/2026:13:20:00 +0000] "GET http://example.test/health HTTP/1.1" 200 42';
+
+    expect(parseCaddyAccessLog(entry)).toMatchObject({
+      host: 'example.test',
+      visitor: '203.0.113.9',
+      status: 200,
+      bytes: 42,
+      duration: 0,
+    });
+  });
+});

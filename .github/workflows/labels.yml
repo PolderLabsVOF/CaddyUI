@@ -5,9 +5,11 @@ on:
   push:
     branches:
       - dev
+      - beta
       - main
     paths:
       - .github/labels.yml
+  workflow_dispatch:
 
 jobs:
   labels:

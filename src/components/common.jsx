@@ -1,13 +1,14 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, Menu, MessageSquare, Moon, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Download, FileCode2, KeyRound, Layers3, Loader2, LogOut, Menu, MessageSquare, Moon, MoreHorizontal, Pencil, Power, RefreshCw, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun, Trash2, X } from 'lucide-react';
 import { updateSimpleProxy } from '../../server/caddyParser.js';
 
 export const pageItems = [
   ['proxies', ServerCog, 'Proxies'],
   ['middlewares', Layers3, 'Middlewares'],
-  ['configuration', FileCode2, 'Configuration'],
   ['tls', ShieldCheck, 'TLS'],
+  ['analytics', Activity, 'Analytics'],
   ['logs', ScrollText, 'Logs'],
+  ['caddy', Activity, 'Runtime'],
   ['settings', Settings, 'Settings'],
 ];
 
@@ -16,23 +17,25 @@ export function Notice({ type = 'info', children }) {
 }
 
 export function Shell({ children, page, setPage, collapsed, setCollapsed, user, onLogout, theme, setTheme, appInfo, onCheckUpdates, onRunUpdate, canUpdate, checkingUpdates, updating, canEdit, onValidateCaddy, onConfirmReloadCaddy, caddyBusy, appVersion, notifications = [], onDismissNotification, onNotificationAction, onClearNotifications }) {
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const activeVersion = appInfo?.version || appInfo?.localVersion || appVersion;
   const targetVersion = appInfo?.availableVersion || appInfo?.remoteVersion || '';
   const shownVersion = updating && targetVersion ? targetVersion : activeVersion;
   const openFeedback = () => {
-    window.location.href = 'https://github.com/DrB0rk/CaddyUI/issues/new/choose';
+    window.location.href = 'https://github.com/PolderLabsVOF/CaddyUI/issues/new/choose';
   };
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <header className="topbar">
         <div className="brand">
-          <button className="icon-button" onClick={() => setCollapsed(!collapsed)}>
+          <button className="icon-button sidebar-toggle" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}>
             {collapsed ? <Menu /> : <SidebarClose />}
           </button>
-          <span className="logo">CaddyUI</span>
-          <span className="app-version">v{shownVersion}</span>
+          <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
+          <span className="logo">Caddy<span>UI</span></span>
         </div>
-        <div className="top-actions">
+        <div className="top-actions desktop-actions">
           {canEdit && (
             <>
               <button onClick={onValidateCaddy} disabled={caddyBusy}>Validate</button>
@@ -50,7 +53,21 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
           </button>
           <button onClick={onLogout}>Logout</button>
         </div>
+        <button type="button" className="icon-button mobile-actions-toggle" aria-label="Open quick actions" aria-expanded={mobileActionsOpen} onClick={() => setMobileActionsOpen(true)}><Menu size={20} /></button>
       </header>
+      {mobileActionsOpen && <div className="mobile-actions-backdrop" onMouseDown={() => setMobileActionsOpen(false)}>
+        <aside className="mobile-actions-sheet" aria-label="Quick actions" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="mobile-actions-head"><div><span className="eyebrow">Signed in</span><strong>{user || 'user'}</strong></div><button type="button" className="icon-button" onClick={() => setMobileActionsOpen(false)} aria-label="Close quick actions"><X size={19} /></button></div>
+          {canEdit && <div className="mobile-action-grid">
+            <button onClick={() => { onValidateCaddy(); setMobileActionsOpen(false); }} disabled={caddyBusy}><CheckCircle2 size={18} />Validate config</button>
+            <button onClick={() => { onConfirmReloadCaddy(); setMobileActionsOpen(false); }} disabled={caddyBusy}><RefreshCw size={18} />Reload Caddy</button>
+          </div>}
+          <button className="mobile-action-row" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}Use {theme === 'light' ? 'dark' : 'light'} theme</button>
+          <button className="mobile-action-row" onClick={onCheckUpdates} disabled={checkingUpdates || updating}><RefreshCw size={18} />{checkingUpdates ? 'Checking for updates…' : `Check updates · v${shownVersion}`}</button>
+          {canUpdate && appInfo?.updateAvailable && <button className="mobile-action-row primary" onClick={() => { onRunUpdate(); setMobileActionsOpen(false); }} disabled={updating}>Update to v{targetVersion}</button>}
+          <button className="mobile-action-row danger" onClick={onLogout}><LogOut size={18} />Sign out</button>
+        </aside>
+      </div>}
       {notifications.length > 0 && (
         <div className="toast-stack" role="status" aria-live="polite">
           {notifications.length > 1 && (
@@ -123,20 +140,22 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
             </span>
           </div>
           <div className="sidebar-actions">
-            <button type="button" onClick={onCheckUpdates} disabled={checkingUpdates || updating}>
-              {checkingUpdates ? 'Checking...' : 'Check updates'}
+            <button type="button" onClick={onCheckUpdates} disabled={checkingUpdates || updating} aria-label={checkingUpdates ? 'Checking for updates' : 'Check for updates'} title={collapsed ? (checkingUpdates ? 'Checking for updates' : 'Check for updates') : undefined}>
+              <RefreshCw size={16} className={checkingUpdates ? 'spin' : ''} />
+              <span>{checkingUpdates ? 'Checking...' : 'Check updates'}</span>
             </button>
             {canUpdate && appInfo?.updateAvailable && (
-              <button type="button" className="primary" onClick={onRunUpdate} disabled={updating}>
-                {updating ? 'Updating...' : `Update to v${appInfo?.availableVersion || appInfo?.remoteVersion || appInfo?.version || appVersion}`}
+              <button type="button" className="primary" onClick={onRunUpdate} disabled={updating} aria-label={updating ? 'Updating CaddyUI' : `Update to v${appInfo?.availableVersion || appInfo?.remoteVersion || appInfo?.version || appVersion}`} title={collapsed ? (updating ? 'Updating CaddyUI' : `Update to v${appInfo?.availableVersion || appInfo?.remoteVersion || appInfo?.version || appVersion}`) : undefined}>
+                <Download size={16} />
+                <span>{updating ? 'Updating...' : `Update to v${appInfo?.availableVersion || appInfo?.remoteVersion || appInfo?.version || appVersion}`}</span>
               </button>
             )}
           </div>
           </div>
         </div>
       </aside>
-      <main className={`content ${collapsed ? 'wide' : ''}`}>{children}</main>
-      <nav className="mobile-nav">
+      <main id="main-content" className={`content ${collapsed ? 'wide' : ''}`}>{children}</main>
+      <nav className="mobile-nav" aria-label="Primary navigation">
         {pageItems.map(([id, Icon, label]) => (
           <button key={id} className={page === id ? 'active' : ''} onClick={() => setPage(id)}>
             <Icon size={18} />
@@ -153,16 +172,16 @@ export function AuthGate({ status, onReady, api }) {
   const needsConfig = status?.settings?.userConfigured && status?.authenticated && !status?.settings?.caddyConfigured;
   const discovered = status?.discovered || { caddyfiles: [], logfiles: [] };
   const [userForm, setUserForm] = useState({ username: '', password: '', setupToken: '' });
-  const [configForm, setConfigForm] = useState({ configMode: status?.settings?.configMode || 'api', caddyfilePath: discovered.caddyfiles?.[0]?.path || '', caddyApiUrl: status?.settings?.caddyApiUrl || 'http://127.0.0.1:2019', logPaths: (discovered.logfiles || []).map((f) => f.path).join('\n') });
+  const [configForm, setConfigForm] = useState({ caddyApiUrl: status?.settings?.caddyApiUrl || 'http://127.0.0.1:2019', logPaths: (discovered.logfiles || []).map((f) => f.path).join('\n') });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const submitUser = async (e) => { e.preventDefault(); setBusy(true); setError(''); try { const path = needsLogin ? '/api/login' : '/api/setup/user'; const payload = needsLogin ? { username: userForm.username, password: userForm.password } : userForm; onReady(await api(path, { method: 'POST', body: JSON.stringify(payload) })); } catch (err) { setError(err.message); } finally { setBusy(false); } };
-  const submitConfig = async (e) => { e.preventDefault(); setBusy(true); setError(''); try { onReady(await api('/api/setup/config', { method: 'POST', body: JSON.stringify({ configMode: configForm.configMode, caddyfilePath: configForm.caddyfilePath, caddyApiUrl: configForm.caddyApiUrl, logPaths: configForm.logPaths.split('\n').map((x) => x.trim()).filter(Boolean) }) })); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  const submitConfig = async (e) => { e.preventDefault(); setBusy(true); setError(''); try { onReady(await api('/api/setup/config', { method: 'POST', body: JSON.stringify({ caddyApiUrl: configForm.caddyApiUrl, logPaths: configForm.logPaths.split('\n').map((x) => x.trim()).filter(Boolean) }) })); } catch (err) { setError(err.message); } finally { setBusy(false); } };
 
-  if (needsConfig) return <div className="auth-page"><form className="auth-card" onSubmit={submitConfig}><h1>CaddyUI</h1><p>Admin user created. Choose API mode or file mode, then set the config and log sources.</p>{error && <Notice type="error">{error}</Notice>}<label>Config mode<select value={configForm.configMode} onChange={(e) => setConfigForm({ ...configForm, configMode: e.target.value })}><option value="api">api</option><option value="file">file</option></select></label><label>Caddy API URL<input value={configForm.caddyApiUrl} onChange={(e) => setConfigForm({ ...configForm, caddyApiUrl: e.target.value })} placeholder="http://127.0.0.1:2019" /></label><label>Caddyfile path<input value={configForm.caddyfilePath} onChange={(e) => setConfigForm({ ...configForm, caddyfilePath: e.target.value })} readOnly={configForm.configMode === 'api'} /></label>{discovered.caddyfiles?.length > 0 && <div className="discover"><b>Discovered Caddyfiles</b>{discovered.caddyfiles.map((f) => <button type="button" key={f.path} onClick={() => setConfigForm({ ...configForm, caddyfilePath: f.path })}>{f.path}</button>)}</div>}<label>Log paths, one per line<textarea rows="5" value={configForm.logPaths} placeholder="/var/log/caddy/access.log" onChange={(e) => setConfigForm({ ...configForm, logPaths: e.target.value })} /></label>{discovered.logfiles?.length > 0 && <div className="discover"><b>Discovered log files</b>{discovered.logfiles.map((f) => <button type="button" key={f.path} onClick={() => { const lines = new Set(configForm.logPaths.split('\n').map((x) => x.trim()).filter(Boolean)); lines.add(f.path); setConfigForm({ ...configForm, logPaths: [...lines].join('\n') }); }}>{f.path}</button>)}</div>}<button className="primary" disabled={busy}>{busy ? <Loader2 className="spin" /> : <FileCode2 size={16} />}Save Caddy configuration</button></form></div>;
+  if (needsConfig) return <div className="auth-page"><form className="auth-card" onSubmit={submitConfig}><h1>CaddyUI</h1><p>Connect CaddyUI to the Caddy Admin API and choose the logs you want to inspect.</p>{error && <Notice type="error">{error}</Notice>}<label>Caddy API URL<input value={configForm.caddyApiUrl} onChange={(e) => setConfigForm({ ...configForm, caddyApiUrl: e.target.value })} placeholder="http://127.0.0.1:2019" /></label><label>Log paths, one per line<textarea rows="5" value={configForm.logPaths} placeholder="/var/log/caddy/access.log" onChange={(e) => setConfigForm({ ...configForm, logPaths: e.target.value })} /></label>{discovered.logfiles?.length > 0 && <div className="discover"><b>Discovered log files</b>{discovered.logfiles.map((f) => <button type="button" key={f.path} onClick={() => { const lines = new Set(configForm.logPaths.split('\n').map((x) => x.trim()).filter(Boolean)); lines.add(f.path); setConfigForm({ ...configForm, logPaths: [...lines].join('\n') }); }}>{f.path}</button>)}</div>}<button className="primary" disabled={busy}>{busy ? <Loader2 className="spin" /> : <FileCode2 size={16} />}Connect Caddy API</button></form></div>;
 
-  return <div className="auth-page"><form className="auth-card" onSubmit={submitUser}><h1>CaddyUI</h1><p>{needsLogin ? 'Sign in to continue.' : 'First create the admin user. Caddy configuration is selected in the next step.'}</p>{error && <Notice type="error">{error}</Notice>}<label>Username<input value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} /></label><label>Password<input type="password" minLength={8} value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} /></label>{!needsLogin && status?.settings?.setupTokenRequired && <label>Setup token<input value={userForm.setupToken} onChange={(e) => setUserForm({ ...userForm, setupToken: e.target.value })} /></label>}<button className="primary" disabled={busy}>{busy ? <Loader2 className="spin" /> : <KeyRound size={16} />}{needsLogin ? 'Login' : 'Create admin account'}</button></form></div>;
+  return <div className="auth-page"><form className="auth-card" onSubmit={submitUser}><h1>CaddyUI</h1><p>{needsLogin ? 'Sign in to continue.' : 'First create the admin user. The Caddy Admin API connection is configured next.'}</p>{error && <Notice type="error">{error}</Notice>}<label>Username<input value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} /></label><label>Password<input type="password" minLength={8} value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} /></label>{!needsLogin && status?.settings?.setupTokenRequired && <label>Setup token<input value={userForm.setupToken} onChange={(e) => setUserForm({ ...userForm, setupToken: e.target.value })} /></label>}<button className="primary" disabled={busy}>{busy ? <Loader2 className="spin" /> : <KeyRound size={16} />}{needsLogin ? 'Login' : 'Create admin account'}</button></form></div>;
 }
 
 export function ConfirmModal({ confirm, onCancel, onConfirm }) {
@@ -173,6 +192,36 @@ export function ConfirmModal({ confirm, onCancel, onConfirm }) {
 export function ReloadConfirmModal({ open, busy, onCancel, onConfirm }) {
   if (!open) return null;
   return <div className="modal-backdrop" onMouseDown={onCancel}><div className="edit-modal" onMouseDown={(e) => e.stopPropagation()}><div className="modal-head"><h3>Reload Caddy</h3></div><p>Apply current configuration and reload now?</p><div className="toolbar"><button className="primary" onClick={onConfirm} disabled={busy}>{busy ? 'Reloading...' : 'Reload'}</button><button onClick={onCancel} disabled={busy}>Cancel</button></div></div></div>;
+}
+
+export function UpdateConfirmModal({ open, currentVersion, targetVersion, channel, onCancel, onConfirm }) {
+  if (!open) return null;
+  const versionLabel = (value) => String(value || '').startsWith('v') ? String(value) : `v${value}`;
+  const current = currentVersion ? versionLabel(currentVersion) : 'Unknown';
+  const target = targetVersion ? versionLabel(targetVersion) : 'Latest verified build';
+  return (
+    <div className="modal-backdrop" onMouseDown={onCancel}>
+      <div className="edit-modal update-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">Software update</span>
+            <h3 id="update-confirm-title">Start CaddyUI update?</h3>
+          </div>
+          <button type="button" onClick={onCancel}>Cancel</button>
+        </div>
+        <p>CaddyUI will download the verified build, rebuild the interface, and restart its service. The control panel will be briefly unavailable.</p>
+        <dl className="update-confirm-summary">
+          <div><dt>Current</dt><dd>{current}</dd></div>
+          <div><dt>Target</dt><dd>{target}</dd></div>
+          <div><dt>Channel</dt><dd>{channel || 'stable'}</dd></div>
+        </dl>
+        <div className="update-confirm-actions">
+          <button type="button" onClick={onCancel}>Keep current version</button>
+          <button type="button" className="primary" onClick={onConfirm}><Download size={16} />Start update</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function TypedConfirmModal({ open, busy, title, message, username, typedValue, onTypedValueChange, confirmLabel = 'Confirm', onCancel, onConfirm }) {
@@ -338,12 +387,32 @@ export function MiddlewarePicker({ snippets, value, onChange }) {
 
 export const StatusDot = ({ check, disabled = false }) => {
   if (disabled || check?.disabled) return <span className="status-dot disabled">disabled</span>;
-  return <span className={`status-dot ${check?.online ? 'online' : 'offline'}`}>{check?.online ? 'online' : 'offline'}</span>;
+  if (!check) return <span className="status-dot pending">checking</span>;
+  return <span className={`status-dot ${check.online ? 'online' : 'offline'}`} title={check.error || undefined}>{check.online ? 'online' : 'offline'}</span>;
 };
 
 export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onEdit, onDelete, onToggleDisabled }) {
   const addresses = Array.isArray(site.addresses) ? site.addresses : [];
   const description = String(site.description || '').trim();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuContainerRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const closeOnOutsideClick = (event) => {
+      if (menuContainerRef.current && !menuContainerRef.current.contains(event.target)) setMenuOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [menuOpen]);
+
   return (
     <div className={`proxy-row ${site.disabled ? 'disabled' : ''}`}>
       <div className={`proxy-row-main ${canEdit ? 'clickable' : ''}`} onClick={canEdit ? onEdit : undefined} role={canEdit ? 'button' : undefined} tabIndex={canEdit ? 0 : undefined} onKeyDown={canEdit ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(); } } : undefined}>
@@ -368,21 +437,24 @@ export const ProxyRow = memo(function ProxyRow({ site, healthCheck, canEdit, onE
             : 'none'}
           {description && <small className="proxy-description">{description}</small>}
         </span>
-        <span className="proxy-target" data-label="Upstream">{site.proxies[0]?.upstreams?.join(' ') || 'no upstream'}</span>
+        <span className="proxy-target" data-label="Upstream" title={site.proxies[0]?.upstreams?.join(' ') || 'No upstream'}>{site.proxies[0]?.upstreams?.join(' ') || 'no upstream'}</span>
         <div className="proxy-local" data-label="Local">
           <StatusDot check={healthCheck} disabled={site.disabled} />
         </div>
-        <span className={`proxy-state ${site.disabled ? 'disabled' : 'enabled'}`} data-label="State">{site.disabled ? 'disabled' : 'enabled'}</span>
-        <span className="proxy-category" data-label="Category">{site.category || 'none'}</span>
-        <span className="proxy-tags" data-label="Tags">{(site.tags || []).join(', ') || 'none'}</span>
-        <span className="proxy-mw" data-label="Imports">{[...site.imports.map((i) => i.name), ...(site.proxies[0]?.imports?.map((i) => i.name) || [])].join(', ') || 'none'}</span>
-        <div className="row-actions">
+        <span className="proxy-category proxy-meta-value" data-label="Category">{site.category || 'none'}</span>
+        <span className="proxy-tags proxy-meta-value" data-label="Tags" title={(site.tags || []).join(', ')}>{(site.tags || []).join(', ') || 'none'}</span>
+        <div className="row-actions" ref={menuContainerRef}>
           {canEdit && (
-            <>
-              <button type="button" onClick={(e) => { e.stopPropagation(); onToggleDisabled(); }}>{site.disabled ? 'Enable' : 'Disable'}</button>
-              <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(); }}>Edit</button>
-              <button type="button" className="danger" onClick={(e) => { e.stopPropagation(); onDelete(e); }}>Delete</button>
-            </>
+            <button type="button" className="row-menu-trigger" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={`Actions for ${addresses[0] || 'proxy'}`} onClick={(e) => { e.stopPropagation(); setMenuOpen((open) => !open); }}>
+              <MoreHorizontal size={18} aria-hidden="true" />
+            </button>
+          )}
+          {canEdit && menuOpen && (
+            <div className="row-menu" role="menu">
+              <button role="menuitem" type="button" className="row-menu-item" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onEdit(); }}><Pencil size={14} />Edit</button>
+              <button role="menuitem" type="button" className="row-menu-item" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onToggleDisabled(); }}><Power size={14} />{site.disabled ? 'Enable' : 'Disable'}</button>
+              <button role="menuitem" type="button" className="row-menu-item danger" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(e); }}><Trash2 size={14} />Delete</button>
+            </div>
           )}
         </div>
       </div>
