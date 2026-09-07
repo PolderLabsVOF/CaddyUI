@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, FileCode2, GitFork, KeyRound, Layers3, Loader2, LogOut, Menu, MessageSquare, Moon, MoreHorizontal, Pencil, Power, RefreshCw, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun, Trash2, X } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, FileCode2, KeyRound, Layers3, Loader2, LogOut, Menu, MessageSquare, Moon, MoreHorizontal, Pencil, Power, RefreshCw, ScrollText, ServerCog, Settings, Shield, ShieldCheck, SidebarClose, Sun, Trash2, X } from 'lucide-react';
 import { updateSimpleProxy } from '../../server/caddyParser.js';
 
 export const pageItems = [
@@ -22,9 +22,6 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
   const shownVersion = updating && targetVersion ? targetVersion : activeVersion;
   const openFeedback = () => {
     window.location.href = 'https://github.com/PolderLabsVOF/CaddyUI/issues/new/choose';
-  };
-  const openSource = () => {
-    window.location.href = 'https://github.com/PolderLabsVOF/CaddyUI';
   };
   return (
     <div className="app-shell">
@@ -67,7 +64,6 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
           </div>}
           <button className="mobile-action-row" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}Use {theme === 'light' ? 'dark' : 'light'} theme</button>
           <button className="mobile-action-row" onClick={onCheckUpdates} disabled={checkingUpdates || updating}><RefreshCw size={18} />{checkingUpdates ? 'Checking for updates…' : `Check updates · v${shownVersion}`}</button>
-          <button className="mobile-action-row" onClick={openSource}><GitFork size={18} />Source code · AGPL-3.0</button>
           {canUpdate && appInfo?.updateAvailable && <button className="mobile-action-row primary" onClick={() => { onRunUpdate(); setMobileActionsOpen(false); }} disabled={updating}>Update to v{targetVersion}</button>}
           <button className="mobile-action-row danger" onClick={onLogout}><LogOut size={18} />Sign out</button>
         </aside>
@@ -132,10 +128,6 @@ export function Shell({ children, page, setPage, collapsed, setCollapsed, user, 
           ))}
         </div>
         <div className="sidebar-bottom">
-          <button type="button" className="sidebar-feedback" onClick={openSource}>
-            <GitFork size={18} />
-            <span>Source code</span>
-          </button>
           <button type="button" className="sidebar-feedback" onClick={openFeedback}>
             <MessageSquare size={18} />
             <span>Feedback</span>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Bot, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Download, KeyRound, Palette, PlugZap, Save, ShieldCheck, Trash2, TriangleAlert, UserPlus, UsersRound } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Download, GitFork, Info, KeyRound, Palette, PlugZap, Save, ShieldCheck, Trash2, TriangleAlert, UserPlus, UsersRound } from 'lucide-react';
 import { Notice, TypedConfirmModal } from '../components/common.jsx';
 
 const localTest = import.meta.env.DEV && import.meta.env.VITE_CADDYUI_LOCAL_TEST === '1';
@@ -11,6 +11,7 @@ const sectionItems = [
   ['account', 'Account', KeyRound],
   ['users', 'Users', UsersRound],
   ['updates', 'Updates', Download],
+  ['about', 'About', Info],
   ['danger', 'Danger', TriangleAlert],
 ];
 
@@ -782,6 +783,26 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
                 <button className="primary">Save update channel</button>
               </div>
             </form>
+          )}
+
+          {activeSection === 'about' && (
+            <div className="settings-form settings-card-grid settings-about">
+              <div className="settings-section-head">
+                <h3>About CaddyUI</h3>
+                <p>Project information, source, and licensing.</p>
+              </div>
+              <div className="settings-card settings-card-wide settings-source-card">
+                <div>
+                  <span className="eyebrow">Open source control plane</span>
+                  <h4>CaddyUI</h4>
+                  <p>Licensed under GNU AGPL-3.0-only. Modified versions offered over a network must make their corresponding source available to their users.</p>
+                </div>
+                <a className="settings-source-link" href="https://github.com/PolderLabsVOF/CaddyUI" target="_blank" rel="noreferrer">
+                  <GitFork size={17} />
+                  View source code
+                </a>
+              </div>
+            </div>
           )}
 
           {activeSection === 'danger' && canAdmin && (

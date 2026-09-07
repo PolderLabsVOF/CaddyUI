@@ -28,6 +28,7 @@ describe('settings layout', () => {
       ['Account', 'Password'],
       ['Users', 'Users'],
       ['Updates', 'Updates'],
+      ['About', 'About CaddyUI'],
       ['Danger', 'Danger zone'],
       ['Connection', 'Connection'],
     ]) {

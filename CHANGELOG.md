@@ -7,7 +7,7 @@
 - Add a complete CaddyUI assistant skill covering the control-plane domain, safe proxy workflows, API durability, TLS/ACME, Cloudflare diagnosis, updates, roles, and secret handling.
 - Load the CaddyUI skill into every built-in assistant provider request and add regression coverage that prevents raw Caddy configuration from reaching the model.
 - Add polished appearance controls with persistent light/dark mode and five browser-local accent choices.
-- Add source-code links to the desktop and mobile navigation.
+- Add project source and license information to Settings → About.
 
 ### Changed
 

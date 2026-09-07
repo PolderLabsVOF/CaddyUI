@@ -2769,6 +2769,15 @@ p { text-wrap: pretty; }
 .settings-danger-card p { min-height: 44px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .settings-danger-card button { align-self: end; width: fit-content; }
 
+.settings-source-card { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.settings-source-card > div { display: grid; gap: 7px; }
+.settings-source-card .eyebrow { margin: 0; }
+.settings-source-card h4 { margin: 0; padding: 0; border: 0; font-size: 19px; }
+.settings-source-card p { max-width: 680px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.settings-source-link { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; flex: none; gap: 8px; padding: 8px 13px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }
+.settings-source-link:hover { border-color: var(--accent); color: var(--accent); }
+.settings-source-link:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 25%, transparent); outline-offset: 2px; }
+
 @media (max-width: 1050px) {
   .settings-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-overview > div:nth-child(3) { grid-column: span 2; }
@@ -2808,6 +2817,8 @@ p { text-wrap: pretty; }
   .user-role-field { grid-template-columns: 48px minmax(0, 1fr); padding: 0 9px 8px 36px; }
   .user-item > .user-scope-grid { grid-template-columns: 1fr; }
   .user-item-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .settings-source-card { align-items: stretch; flex-direction: column; }
+  .settings-source-link { width: 100%; }
 }
 
 @media (max-width: 390px) {
