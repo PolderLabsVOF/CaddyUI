@@ -4047,3 +4047,31 @@ label {
   color: var(--muted);
   font-size: 12px;
 }
+
+.tls-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.tls-summary > div, .tls-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 12px 24px var(--shadow); }
+.tls-summary > div { padding: 14px; }
+.tls-summary span { display: block; color: var(--muted); font-size: 12px; }
+.tls-summary b { display: block; margin-top: 5px; font-size: 18px; }
+.tls-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, .8fr); gap: 14px; }
+.tls-card { padding: 16px; }
+.tls-card h3 { margin: 0 0 8px; }
+.tls-card > p { color: var(--muted); }
+.tls-card label { display: grid; gap: 6px; margin: 12px 0; font-weight: 700; }
+.tls-card input { width: 100%; }
+.tls-card-wide { grid-row: span 2; }
+.tls-certificate { padding: 13px 0; border-top: 1px solid var(--line); }
+.tls-certificate:first-of-type { border-top: 0; }
+.tls-certificate > div { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.tls-state { font-size: 12px; font-weight: 700; color: var(--ok); }
+.tls-certificate.error .tls-state { color: var(--danger); }
+.tls-certificate > p { color: var(--danger); margin-bottom: 0; }
+.tls-certificate dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 12px 0 0; }
+.tls-certificate dt { color: var(--muted); font-size: 12px; }
+.tls-certificate dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+
+@media (max-width: 800px) {
+  .tls-summary, .tls-grid { grid-template-columns: 1fr; }
+  .tls-card-wide { grid-row: auto; }
+  .tls-certificate dl { grid-template-columns: 1fr; }
+}

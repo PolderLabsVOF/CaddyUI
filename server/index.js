@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import net from 'node:net';
 import dns from 'node:dns/promises';
+import tls from 'node:tls';
 import {
   parseCaddyfile,
   appendSimpleProxy,
@@ -1074,6 +1075,113 @@ async function applyConfigContent(settings, content, { backup = false } = {}) {
   return { backup: '' };
 }
 
+function globalOptionsBounds(content = '') {
+  const lines = String(content).replace(/\r\n/g, '\n').split('\n');
+  let start = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const clean = lines[index].replace(/#.*/, '').trim();
+    if (!clean) continue;
+    if (clean === '{') start = index;
+    break;
+  }
+  if (start < 0) return { lines, start: -1, end: -1 };
+  let depth = 0;
+  for (let index = start; index < lines.length; index += 1) {
+    const clean = lines[index].replace(/#.*/, '');
+    for (const char of clean) {
+      if (char === '{') depth += 1;
+      if (char === '}') depth -= 1;
+    }
+    if (depth === 0) return { lines, start, end: index };
+  }
+  return { lines, start: -1, end: -1 };
+}
+
+function readGlobalTlsSettings(content = '') {
+  const { lines, start, end } = globalOptionsBounds(content);
+  const result = { email: '', acmeCa: '' };
+  if (start < 0) return result;
+  for (let index = start + 1; index < end; index += 1) {
+    const clean = lines[index].replace(/#.*/, '').trim();
+    if (clean.startsWith('email ')) result.email = clean.slice('email '.length).trim();
+    if (clean.startsWith('acme_ca ')) result.acmeCa = clean.slice('acme_ca '.length).trim();
+  }
+  return result;
+}
+
+function updateGlobalTlsSettings(content = '', values = {}) {
+  const email = String(values.email || '').trim();
+  const acmeCa = String(values.acmeCa || '').trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('A valid ACME account email is required.');
+  if (acmeCa) {
+    let parsed;
+    try { parsed = new URL(acmeCa); } catch { throw new Error('ACME CA must be a valid HTTPS URL.'); }
+    if (parsed.protocol !== 'https:') throw new Error('ACME CA must use HTTPS.');
+  }
+  const { lines, start, end } = globalOptionsBounds(content);
+  const directives = [['email', email], ['acme_ca', acmeCa]];
+  if (start < 0) {
+    const body = directives.filter(([, value]) => value).map(([name, value]) => `\t${name} ${value}`);
+    if (!body.length) return String(content);
+    return `{\n${body.join('\n')}\n}\n\n${String(content).replace(/^\s*/, '')}`;
+  }
+  const next = [...lines];
+  for (const [name, value] of directives) {
+    const index = next.findIndex((line, lineIndex) => lineIndex > start && lineIndex < end && new RegExp(`^\\s*${name}\\s+`).test(line.replace(/#.*/, '')));
+    if (index >= 0 && value) next[index] = `\t${name} ${value}`;
+    else if (index >= 0) next.splice(index, 1);
+    else if (value) next.splice(end, 0, `\t${name} ${value}`);
+  }
+  return next.join('\n');
+}
+
+function probeTlsCertificate(host, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    const socket = tls.connect({ host, port: 443, servername: host, rejectUnauthorized: false });
+    const finish = (result) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve({ host, ...result });
+    };
+    socket.setTimeout(timeoutMs, () => finish({ ok: false, error: 'TLS handshake timed out.' }));
+    socket.once('error', (error) => finish({ ok: false, error: error.message || error.code || 'TLS handshake failed.' }));
+    socket.once('secureConnect', () => {
+      const certificate = socket.getPeerCertificate(true);
+      if (!certificate || !Object.keys(certificate).length) return finish({ ok: false, error: 'Server did not provide a certificate.' });
+      return finish({
+        ok: true,
+        authorized: socket.authorized,
+        authorizationError: socket.authorizationError || '',
+        certificate: {
+          subject: certificate.subject || {},
+          issuer: certificate.issuer || {},
+          validFrom: certificate.valid_from || '',
+          validTo: certificate.valid_to || '',
+          serialNumber: certificate.serialNumber || '',
+          fingerprint256: certificate.fingerprint256 || '',
+          subjectAltName: certificate.subjectaltname || '',
+        },
+      });
+    });
+  });
+}
+
+function collectConfiguredHosts(value, hosts = new Set()) {
+  if (Array.isArray(value)) {
+    for (const item of value) collectConfiguredHosts(item, hosts);
+    return hosts;
+  }
+  if (!value || typeof value !== 'object') return hosts;
+  if (Array.isArray(value.host)) {
+    for (const host of value.host) {
+      const normalized = splitHostPort(host).host.toLowerCase();
+      if (normalized && !normalized.includes('*') && net.isIP(normalized) === 0) hosts.add(normalized);
+    }
+  }
+  for (const child of Object.values(value)) collectConfiguredHosts(child, hosts);
+  return hosts;
+}
+
 async function tailFile(filePath, lines = 200) {
   const content = await fs.readFile(filePath, 'utf8');
   return content.split('\n').slice(-lines).join('\n');
@@ -1837,6 +1945,72 @@ app.get('/api/caddy/pki/ca/:id/certificates', auth, requirePermission('view'), a
     });
   } catch (error) {
     return res.status(503).json({ error: error.message || 'Caddy API is unavailable.' });
+  }
+});
+
+app.get('/api/ssl/status', auth, requirePermission('view'), async (_req, res) => {
+  try {
+    const { content } = await readWorkingConfig();
+    const settings = await loadSettings();
+    let runtimeConfig = null;
+    try {
+      const response = await requestCaddyApi(settings, '/config/', { method: 'GET', timeoutMs: 8000 });
+      const result = await caddyResponseData(response);
+      if (result.ok && result.data && typeof result.data === 'object') runtimeConfig = result.data;
+    } catch {}
+    const parsed = await parseConfigWithMeta(content);
+    const hosts = runtimeConfig
+      ? [...collectConfiguredHosts(runtimeConfig)]
+      : [...new Set(
+          (parsed.sites || [])
+            .flatMap((site) => site.addresses || [])
+            .map((address) => splitHostPort(address).host.toLowerCase())
+            .filter((host) => host && !host.includes('*') && net.isIP(host) === 0)
+        )];
+    const certificates = await Promise.all(hosts.map((host) => probeTlsCertificate(host)));
+    return res.json({
+      global: readGlobalTlsSettings(content),
+      certificates,
+      automation: runtimeConfig?.apps?.tls?.automation || null,
+      checkedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    return res.status(503).json({ error: error.message || 'Unable to inspect TLS status.' });
+  }
+});
+
+app.post('/api/ssl/settings', requireTrustedOrigin, auth, requirePermission('admin'), async (req, res) => {
+  try {
+    const settings = await loadSettings();
+    const { content } = await readWorkingConfig();
+    if (!content.trim()) {
+      return res.status(409).json({ error: 'TLS settings cannot be saved because the Caddyfile working copy is empty. Import or create the full configuration first.' });
+    }
+    const liveResponse = await requestCaddyApi(settings, '/config/', { method: 'GET', timeoutMs: 8000 });
+    const liveResult = await caddyResponseData(liveResponse);
+    if (!liveResult.ok || !liveResult.data || typeof liveResult.data !== 'object') {
+      return res.status(503).json({ error: 'Unable to compare the working copy with Caddy’s live configuration.' });
+    }
+    const parsedCurrent = await parseConfigWithMeta(content);
+    const cachedHosts = new Set(
+      (parsedCurrent.sites || [])
+        .flatMap((site) => site.addresses || [])
+        .map((address) => splitHostPort(address).host.toLowerCase())
+        .filter((host) => host && !host.includes('*') && net.isIP(host) === 0)
+    );
+    const liveHosts = collectConfiguredHosts(liveResult.data);
+    const hostsMatch = cachedHosts.size === liveHosts.size && [...cachedHosts].every((host) => liveHosts.has(host));
+    if (!hostsMatch) {
+      return res.status(409).json({ error: 'TLS settings were not saved because the Caddyfile working copy does not match Caddy’s live hosts. Refresh or import the full configuration first.' });
+    }
+    const nextContent = updateGlobalTlsSettings(content, req.body || {});
+    const validation = await validateConfigForSettings(settings, nextContent);
+    if (!validation.ok) return res.status(400).json({ error: 'TLS settings failed Caddy validation.', validation });
+    await applyConfigContent(settings, nextContent, { backup: true });
+    const parsed = await parseConfigWithMeta(nextContent);
+    return res.json({ ok: true, global: readGlobalTlsSettings(nextContent), content: nextContent, parsed });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Unable to apply TLS settings.' });
   }
 });
 

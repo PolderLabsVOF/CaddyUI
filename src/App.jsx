@@ -7,6 +7,7 @@ import Proxies from './pages/Proxies.jsx';
 import Middlewares from './pages/Middlewares.jsx';
 import Configuration from './pages/Configuration.jsx';
 import Logs from './pages/Logs.jsx';
+import Tls from './pages/Tls.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import AiAssistant from './components/AiAssistant.jsx';
 import { AuthGate, Notice, ReloadConfirmModal, Shell } from './components/common.jsx';
@@ -421,6 +422,7 @@ export default function App() {
           onConfigChanged={notifyConfigChangedNeedsReload}
         />
       )}
+      {page === 'tls' && <Tls api={api} canAdmin={canAdmin} setConfig={setConfig} onConfigChanged={notifyConfigChangedNeedsReload} />}
       {page === 'logs' && <Logs api={api} />}
       {page === 'settings' && (
         <SettingsPage settings={settings} setSettings={setSettings} canEdit={canEdit} canAdmin={canAdmin} api={api} notify={pushNotification} refreshConfig={refreshConfig} setStatus={setStatus} />

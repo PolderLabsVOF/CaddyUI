@@ -72,6 +72,8 @@ Use `stable` if you want the calm path. Use `beta` or `dev` if you want newer fe
 - Role-based access: `view`, `edit`, and `admin`
 - Security settings: trusted proxy hops, cookie mode, setup exposure, allowed origins
 - Config apply via Caddy Admin API (push to `/load` and `/adapt`)
+- Durable API-mode setup: the installer uses `caddy-api.service` (or warns when it is unavailable), so a reboot resumes the configuration managed by CaddyUI
+- TLS dashboard with live certificate handshakes, expiry/issuer details, and global ACME settings
 - Onboarding with Caddyfile and log discovery
 - Self-updates from `stable`, `beta`, or `dev`
 
@@ -81,6 +83,8 @@ CaddyUI reads your configured Caddy config, parses your sites, proxies, and impo
 
 When you apply changes:
 - CaddyUI pushes the generated config to Caddy's Admin API (`/load`) and keeps a working config cache for the editor.
+
+For API-managed installations, Caddy itself must start with `--resume`. The installer enables the distribution-provided `caddy-api.service` when available. Do not later run `caddy reload --config /etc/caddy/Caddyfile`: that loads file-managed configuration and replaces the API-managed one.
 
 It also handles onboarding, authentication, user roles, log discovery, update channel selection, and runtime security settings.
 
@@ -103,8 +107,9 @@ The first-time setup walks you through:
 
 1. Creating an admin user
 2. Entering the setup token, if required
-3. Selecting a detected Caddyfile or entering a path manually
-4. Selecting detected log files or adding log paths manually
+3. Connecting to Caddy's local Admin API
+4. Optionally selecting a Caddyfile only as a one-time editor bootstrap source; it is never used to reload Caddy
+5. Selecting detected log files or adding log paths manually
 
 ## Configure Caddy in Settings
 
@@ -133,6 +138,9 @@ Notes:
 
 - **Logs**  
   View Caddy logs from configured files and `journalctl`.
+
+- **TLS**
+  Check the actual certificate served for every configured hostname, including issuer, SANs, expiry, and handshake failures. Administrators can configure the global ACME account email and directory URL. Per-site custom certificates and `tls internal` remain visible and editable in the raw configuration.
 
 - **Settings**  
   Configure config mode (`file`/`api`), API URL/secret, paths, scans, users, passwords, update channel, and security options.
