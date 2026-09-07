@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   nightly:
@@ -23,13 +23,28 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: bash -n scripts/install.sh
-      - name: Record the checked-out dev revision
+      - name: Record the verified dev revision
         id: revision
-        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Package nightly artifact
-        run: tar -czf "caddyui-dev-${{ github.run_number }}-${{ steps.revision.outputs.short_sha }}.tar.gz" dist package.json package-lock.json scripts/install.sh README.md
-      - uses: actions/upload-artifact@v4
-        with:
-          name: caddyui-dev-${{ github.run_number }}-${{ steps.revision.outputs.short_sha }}
-          path: caddyui-dev-*.tar.gz
-          retention-days: 14
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Package verified nightly source archive
+        run: |
+          mkdir -p nightly-stage/caddyui-nightly
+          git archive HEAD | tar -x -C nightly-stage/caddyui-nightly
+          printf '%s\n' '${{ steps.revision.outputs.commit }}' > nightly-stage/caddyui-nightly/.caddyui-nightly-commit
+          tar -C nightly-stage -czf "caddyui-nightly-${{ steps.revision.outputs.commit }}.tar.gz" caddyui-nightly
+          sha256sum "caddyui-nightly-${{ steps.revision.outputs.commit }}.tar.gz" > "caddyui-nightly-${{ steps.revision.outputs.commit }}.tar.gz.sha256"
+      - name: Publish the rolling nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit='${{ steps.revision.outputs.commit }}'
+          asset="caddyui-nightly-${commit}.tar.gz"
+          checksum="${asset}.sha256"
+          if gh release view nightly >/dev/null 2>&1; then
+            gh release upload nightly "$asset" "$checksum" --clobber
+            git tag -f nightly "$commit"
+            git push --force origin refs/tags/nightly
+            gh release edit nightly --target "$commit" --title "Nightly dev build" --prerelease --notes "Latest successful dev nightly: $commit"
+          else
+            gh release create nightly "$asset" "$checksum" --target "$commit" --title "Nightly dev build" --prerelease --notes "Latest successful dev nightly: $commit"
+          fi

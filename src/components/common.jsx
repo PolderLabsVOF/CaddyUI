@@ -298,12 +298,6 @@ export function MiddlewarePicker({ snippets, value, onChange }) {
   const selected = selectedImportNames(value);
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
-  if (!snippets.length) return null;
-  const toggle = (name) => {
-    const set = new Set(selected);
-    if (set.has(name)) set.delete(name); else set.add(name);
-    onChange([...set].join(', '));
-  };
   useEffect(() => {
     if (!open) return undefined;
     const handle = (event) => {
@@ -316,6 +310,12 @@ export function MiddlewarePicker({ snippets, value, onChange }) {
       document.removeEventListener('touchstart', handle);
     };
   }, [open]);
+  if (!snippets.length) return null;
+  const toggle = (name) => {
+    const set = new Set(selected);
+    if (set.has(name)) set.delete(name); else set.add(name);
+    onChange([...set].join(', '));
+  };
   return (
     <div className="import-dropdown" ref={containerRef}>
       <button type="button" className="import-dropdown-trigger" onClick={() => setOpen((v) => !v)}>

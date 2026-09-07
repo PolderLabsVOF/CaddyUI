@@ -450,14 +450,14 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
             <form className="settings-form" onSubmit={saveUpdateChannel}>
               <div className="settings-section-head">
                 <h3>Updates</h3>
-                <p>Choose which branch channel powers update checks and installs.</p>
+                <p>Stable and beta follow their release branches. Dev installs the most recent successful nightly build, never an unchecked branch tip.</p>
               </div>
               <label>
                 Update channel
                 <select value={updateChannel} onChange={(e) => { setUpdateChannel(e.target.value); setSettings((current) => ({ ...(current || {}), updateChannel: e.target.value })); }}>
                   <option value="stable">stable</option>
                   <option value="beta">beta</option>
-                  <option value="dev">dev</option>
+                  <option value="dev">dev (latest successful nightly)</option>
                 </select>
               </label>
               <button className="primary">Save update channel</button>
