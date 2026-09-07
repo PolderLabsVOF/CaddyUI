@@ -198,7 +198,7 @@ resolve_stable_release_tag() {
     tag="$STABLE_RELEASE_TAG"
   else
     step "Resolving latest stable release"
-    if ! release_json="$(curl --fail --silent --show-error --location --retry 3 "$GITHUB_RELEASES_URL")"; then
+    if ! release_json="$(curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 30 "$GITHUB_RELEASES_URL")"; then
       fail "Unable to resolve the latest stable release from GitHub."
     fi
     if ! tag="$(node -e '
@@ -216,7 +216,10 @@ resolve_stable_release_tag() {
 
 prepare_update_source() {
   validate_update_branch
-  [[ "$BRANCH" == "main" ]] && resolve_stable_release_tag
+  if [[ "$BRANCH" == "main" ]]; then
+    update_status source 18 "Resolving the latest stable release."
+    resolve_stable_release_tag
+  fi
 }
 
 sqlite_runtime_ok() {
@@ -331,6 +334,8 @@ CADDY_UI_SECRET=$SECRET
 CADDY_UI_SETUP_TOKEN=$SETUP_TOKEN_VALUE
 CADDY_UI_CONFIG_MODE=api
 CADDY_UI_CADDY_API_URL=$CADDY_API_URL
+CADDYUI_INSTALL_DIR=$INSTALL_DIR
+CADDYUI_LOG_DIR=$LOG_DIR
 ENV
   chmod 600 "$INSTALL_DIR/.env" || true
   if [[ "$IS_ROOT" -eq 1 ]]; then chown "$RUN_USER":"$RUN_USER" "$INSTALL_DIR/.env" 2>/dev/null || true; fi

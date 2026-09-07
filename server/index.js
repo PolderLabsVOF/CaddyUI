@@ -37,6 +37,7 @@ function defaultDataDir() {
   return path.join(home || '.', '.local', 'share', 'caddyui', 'data');
 }
 const DATA_DIR = process.env.CADDY_UI_DATA_DIR || defaultDataDir();
+const LOG_DIR = process.env.CADDYUI_LOG_DIR || (DATA_DIR === '/var/lib/caddyui' ? '/var/log/caddyui' : path.join(DATA_DIR, 'logs'));
 const DB_PATH = process.env.CADDY_UI_DB_PATH || path.join(DATA_DIR, 'caddyui.db');
 const UPDATE_STATUS_PATH = path.join(DATA_DIR, 'update-status.tsv');
 const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
@@ -2313,6 +2314,10 @@ app.post('/api/app/update', requireTrustedOrigin, auth, requirePermission('admin
     cwd: ROOT,
     env: {
       ...process.env,
+      CADDYUI_INSTALL_DIR: ROOT,
+      CADDY_UI_DATA_DIR: DATA_DIR,
+      CADDYUI_LOG_DIR: LOG_DIR,
+      CADDYUI_PORT: String(PORT),
       CADDYUI_BRANCH: branch,
       CADDYUI_ASSUME_YES: '1',
       CADDYUI_UPDATE_STATUS_FILE: UPDATE_STATUS_PATH,
@@ -2324,6 +2329,15 @@ app.post('/api/app/update', requireTrustedOrigin, auth, requirePermission('admin
     },
     detached: true,
     stdio: 'ignore',
+  });
+  child.once('error', (error) => {
+    writeUpdateProgress('failed', 100, `Unable to start installer: ${error.message}`).catch(() => {});
+  });
+  child.once('exit', (code, signal) => {
+    if (code !== 0) {
+      const detail = signal ? `terminated by ${signal}` : `exited with code ${code}`;
+      writeUpdateProgress('failed', 100, `Installer ${detail}. Check the installer log.`).catch(() => {});
+    }
   });
   child.unref();
   res.json({ ok: true, started: true });
