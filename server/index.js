@@ -148,6 +148,15 @@ app.use(
 );
 app.use(express.json({ limit: '5mb' }));
 app.use(cookieParser());
+// Update/status responses must never be served from a browser or proxy cache.
+// Otherwise the updater can finish successfully while the UI keeps seeing the
+// previous version until the cache TTL expires.
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 app.use((_req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
@@ -2566,8 +2575,24 @@ app.get('/api/app/update-status', auth, requirePermission('view'), async (_req, 
 
 if (process.env.NODE_ENV === 'production') {
   const dist = path.join(ROOT, 'dist');
-  app.use(express.static(dist));
-  app.get(/.*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  app.use(express.static(dist, {
+    index: false,
+    setHeaders(res, filePath) {
+      if (path.basename(filePath) === 'index.html') {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
+  app.get(/.*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.sendFile(path.join(dist, 'index.html'));
+  });
 }
 
 loadSettings().catch(() => {});
