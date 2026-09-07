@@ -12,6 +12,9 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import net from 'node:net';
 import dns from 'node:dns/promises';
 import tls from 'node:tls';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { z } from 'zod';
 import {
   parseCaddyfile,
   appendSimpleProxy,
@@ -47,6 +50,7 @@ const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
 const SESSION_PATH = path.join(DATA_DIR, 'sessions.json');
 const DEFAULT_SECRET = 'dev-change-me-caddy-ui';
 const JWT_SECRET = process.env.CADDY_UI_SECRET || DEFAULT_SECRET;
+const MCP_TOKEN = String(process.env.CADDYUI_MCP_TOKEN || '').trim();
 const COOKIE_NAME = 'caddyui_token';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const SETUP_TOKEN = process.env.CADDY_UI_SETUP_TOKEN || '';
@@ -132,6 +136,9 @@ if (IS_PRODUCTION && weakSecretConfigured) {
 }
 if (!IS_PRODUCTION && weakSecretConfigured) {
   console.warn('[security] Using a weak CADDY_UI_SECRET outside production; set at least 32 characters.');
+}
+if (MCP_TOKEN && MCP_TOKEN.length < 32) {
+  throw new Error('Set CADDYUI_MCP_TOKEN to a strong value (at least 32 characters).');
 }
 
 app.set('trust proxy', runtimeTrustProxyHops > 0 ? runtimeTrustProxyHops : false);
@@ -1178,6 +1185,170 @@ async function trafficAnalytics(settings, range) {
     unparsedLines,
   };
 }
+
+function mcpResult(value) {
+  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
+}
+
+function mcpError(error) {
+  return { content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }], isError: true };
+}
+
+async function reloadWorkingConfig() {
+  const settings = await loadSettings();
+  const { content } = await readWorkingConfig();
+  if (!content.trim()) throw new Error('No config content available to reload.');
+  const response = await requestCaddyApi(settings, '/load', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/caddyfile', 'Cache-Control': 'must-revalidate' },
+    body: content,
+    timeoutMs: 12_000,
+  });
+  const output = await response.text();
+  if (!response.ok) throw new Error(output || `Caddy API reload failed (${response.status}).`);
+  return { ok: true, message: 'Reloaded Caddy via the Admin API.' };
+}
+
+function createMcpServer() {
+  const server = new McpServer({ name: 'caddyui', version: APP_VERSION });
+  const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true };
+  const writesConfig = { readOnlyHint: false, destructiveHint: false, idempotentHint: true };
+
+  server.registerTool('caddyui_overview', {
+    title: 'Get CaddyUI overview',
+    description: 'Read CaddyUI status, the parsed Caddyfile inventory, proxy health, and active Caddy runtime metrics.',
+    annotations: readOnly,
+  }, async () => {
+    try {
+      const [settings, working] = await Promise.all([loadSettings(), readWorkingConfig()]);
+      const parsed = await parseConfigWithMeta(working.content);
+      const [health, metrics] = await Promise.all([
+        checkProxyHealth(parsed),
+        requestCaddyApi(settings, '/metrics', { method: 'GET', timeoutMs: 8_000 })
+          .then(async (response) => response.ok ? parsePrometheusMetrics(await response.text()).summary : null)
+          .catch(() => null),
+      ]);
+      return mcpResult({ version: APP_VERSION, configPath: working.path, parsed, health, metrics });
+    } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_get_config', {
+    title: 'Get Caddyfile',
+    description: 'Read the complete Caddyfile working copy and parsed proxy and middleware inventory.',
+    annotations: readOnly,
+  }, async () => {
+    try {
+      const working = await readWorkingConfig();
+      return mcpResult({ ...working, parsed: await parseConfigWithMeta(working.content) });
+    } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_validate_config', {
+    title: 'Validate Caddyfile',
+    description: 'Validate proposed Caddyfile content without changing the running configuration.',
+    inputSchema: { content: z.string().min(1).describe('Complete proposed Caddyfile content.') },
+    annotations: readOnly,
+  }, async ({ content }) => {
+    try { return mcpResult(await validateConfigForSettings(await loadSettings(), content)); } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_apply_config', {
+    title: 'Apply Caddyfile',
+    description: 'Validate and apply a complete Caddyfile through CaddyUI. This changes the live Caddy configuration and saves a backup.',
+    inputSchema: { content: z.string().min(1).describe('Complete Caddyfile content to validate and apply.') },
+    annotations: writesConfig,
+  }, async ({ content }) => {
+    try {
+      const settings = await loadSettings();
+      const validation = await validateConfigForSettings(settings, content);
+      if (!validation.ok) return mcpResult({ ok: false, validation, parsed: await parseConfigWithMeta(content) });
+      const { backup } = await applyConfigContent(settings, content, { backup: true });
+      const parsed = await parseConfigWithMeta(content);
+      await pruneProxyMetaForParsed(parsed);
+      return mcpResult({ ok: true, backup, validation, parsed });
+    } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_reload', {
+    title: 'Reload Caddy',
+    description: 'Reload Caddy from the current CaddyUI working configuration.',
+    annotations: writesConfig,
+  }, async () => {
+    try { return mcpResult(await reloadWorkingConfig()); } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_runtime_request', {
+    title: 'Call Caddy Admin API',
+    description: 'Read or update Caddy’s native Admin API. Use a relative API path only, such as /config/ or /id/my-handler.',
+    inputSchema: {
+      path: z.string().min(1).describe('Relative Caddy Admin API path, beginning with /.') ,
+      method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET'),
+      body: z.string().optional().describe('Optional request body; use JSON for native Caddy configuration writes.'),
+      contentType: z.string().optional().describe('Optional request Content-Type, such as application/json.'),
+    },
+    annotations: writesConfig,
+  }, async ({ path: requestPath, method, body, contentType }) => {
+    try {
+      const normalizedPath = `/${caddyPathPart(String(requestPath).replace(/^\/+/, ''))}`;
+      const response = await requestCaddyApi(await loadSettings(), normalizedPath, {
+        method,
+        headers: contentType ? { 'Content-Type': contentType } : {},
+        body: body === undefined ? undefined : body,
+        timeoutMs: 12_000,
+      });
+      const raw = await response.text();
+      let value = raw;
+      try { value = raw ? JSON.parse(raw) : null; } catch {}
+      return mcpResult({ ok: response.ok, status: response.status, value });
+    } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_logs', {
+    title: 'Read Caddy logs',
+    description: 'Read recent Caddy logs from configured files, the system journal, or both.',
+    inputSchema: {
+      lines: z.number().int().min(10).max(2_000).default(200),
+      source: z.enum(['all', 'files', 'journal']).default('all'),
+    },
+    annotations: readOnly,
+  }, async ({ lines, source }) => {
+    try { return mcpResult({ logs: await collectLogs({ ...(await loadSettings()), logMode: source }, lines) }); } catch (error) { return mcpError(error); }
+  });
+
+  server.registerTool('caddyui_analytics', {
+    title: 'Get traffic analytics',
+    description: 'Read request, error, response-time, host, status-code, and traffic data from Caddy access logs.',
+    inputSchema: { range: z.enum(['24h', '7d']).default('24h') },
+    annotations: readOnly,
+  }, async ({ range }) => {
+    try { return mcpResult(await trafficAnalytics(await loadSettings(), range)); } catch (error) { return mcpError(error); }
+  });
+
+  return server;
+}
+
+function requireMcpToken(req, res, next) {
+  if (!MCP_TOKEN) return res.status(404).json({ error: 'Not found' });
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (!secureEqual(token, MCP_TOKEN)) {
+    res.setHeader('WWW-Authenticate', 'Bearer realm="CaddyUI MCP"');
+    return res.status(401).json({ error: 'Invalid MCP bearer token.' });
+  }
+  return next();
+}
+
+app.all('/api/mcp', requireMcpToken, async (req, res) => {
+  const server = createMcpServer();
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    if (!res.headersSent) res.status(500).json({ error: error.message || 'MCP request failed.' });
+  } finally {
+    await server.close().catch(() => {});
+  }
+});
 
 async function validateConfig(content) {
   const tmp = path.join(os.tmpdir(), `caddyui-${process.pid}-${Date.now()}-${randomUUID()}.Caddyfile`);

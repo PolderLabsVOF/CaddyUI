@@ -110,6 +110,36 @@ The API token is stored server-side; the browser only learns whether one is conf
 
 CaddyUI exposes its authenticated Caddy API bridge below `/api/caddy/*`, including configuration, ID, PKI, and reverse-proxy upstream endpoints. Treat administrator access to CaddyUI as administrator access to your proxy infrastructure.
 
+## Remote MCP access
+
+CaddyUI can expose a remote [Streamable HTTP MCP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) endpoint so an agent can manage the same Caddy configuration through `https://caddyui.example.com/api/mcp`.
+
+Set a dedicated, high-entropy bearer token in the CaddyUI service environment and restart the service. The endpoint remains disabled unless this variable is set; CaddyUI refuses tokens shorter than 32 characters.
+
+```ini
+# systemd override: sudo systemctl edit caddyui
+[Service]
+Environment="CADDYUI_MCP_TOKEN=replace-with-a-random-32-character-minimum-token"
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart caddyui
+```
+
+Connect your remote MCP client to the public HTTPS URL and send the token as a bearer credential:
+
+```json
+{
+  "url": "https://caddyui.example.com/api/mcp",
+  "headers": {
+    "Authorization": "Bearer replace-with-your-mcp-token"
+  }
+}
+```
+
+The MCP endpoint has full CaddyUI administration capability: it can inspect logs and analytics, read and validate the working Caddyfile, apply/reload it, and call the native Caddy Admin API. Keep the token in your agent's secret store, use HTTPS, and rotate it by changing the environment variable and restarting CaddyUI.
+
 ## A minimal route for CaddyUI
 
 ```caddyfile
