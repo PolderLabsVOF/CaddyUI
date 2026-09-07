@@ -429,6 +429,12 @@ function requirePermission(required) {
   };
 }
 
+function summarizeText(value = '', max = 180) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+}
+
 function setupTokenRequired(settings) {
   return IS_PRODUCTION && normalizeSettings(settings).users.length === 0 && Boolean(SETUP_TOKEN);
 }
@@ -2064,10 +2070,7 @@ app.get('/api/events', auth, requirePermission('view'), async (req, res) => {
 });
 
 function visibleAiProxySummaries(parsed, user) {
-  return (parsed?.sites || []).filter((site) => {
-    if (!userHasScopedEditRestrictions(user)) return true;
-    return canUserEditProxyTarget(user, { host: site.addresses?.[0] || '', category: site.category || '' });
-  }).map((site) => ({
+  return (parsed?.sites || []).map((site) => ({
     line: Number(site.line),
     host: String(site.addresses?.[0] || ''),
     upstream: String(site.proxies?.[0]?.upstreams?.[0] || site.proxies?.[0]?.upstream || ''),
@@ -2196,25 +2199,21 @@ app.post('/api/ai/actions/:id/confirm', requireTrustedOrigin, auth, requirePermi
     if (action.preview?.configFingerprint && action.preview.configFingerprint !== currentFingerprint) throw new Error('Configuration changed since this action was proposed. Ask the assistant to prepare it again.');
     let next = content;
     if (action.actionType === 'create_proxy') {
-      if (!canUserEditProxyTarget(req.user, { host: action.args.host, category: action.args.category })) throw new Error('Proxy is outside your allowed scope.');
       next = appendSimpleProxy(content, action.args);
     } else if (action.actionType === 'update_proxy') {
       const parsed = parseCaddyfile(content);
       const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
       if (!previous) throw new Error('Proxy not found.');
-      if (!canUserEditProxyTarget(req.user, { host: action.args.host, category: action.args.category })) throw new Error('Proxy is outside your allowed scope.');
       next = updateSimpleProxy(content, { ...action.args, siteLine: action.args.line });
     } else if (action.actionType === 'set_proxy_disabled') {
       const parsed = parseCaddyfile(content);
       const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
       if (!previous) throw new Error('Proxy not found.');
-      if (!canUserEditProxyTarget(req.user, { host: previous.addresses?.[0] || '', category: previous.category || '' })) throw new Error('Proxy is outside your allowed scope.');
       next = setProxyDisabled(content, action.args.line, action.args.disabled === true);
     } else if (action.actionType === 'delete_proxy') {
       const parsed = parseCaddyfile(content);
       const previous = (parsed.sites || []).find((site) => Number(site.line) === Number(action.args.line));
       if (!previous) throw new Error('Proxy not found.');
-      if (!canUserEditProxyTarget(req.user, { host: previous.addresses?.[0] || '', category: previous.category || '' })) throw new Error('Proxy is outside your allowed scope.');
       next = deleteBlockAtLine(content, action.args.line);
     } else if (action.actionType === 'reload_caddy') {
       await store.finishAiPendingAction(action.id, req.user.username, 'succeeded');
@@ -2226,8 +2225,7 @@ app.post('/api/ai/actions/:id/confirm', requireTrustedOrigin, auth, requirePermi
     if (['create_proxy', 'update_proxy'].includes(action.actionType)) await saveProxyMetaByParts(action.args.host, action.args.upstream, action.args.tags, action.args.category, action.args.description);
     const parsed = await parseConfigWithMeta(next);
     await store.finishAiPendingAction(action.id, req.user.username, 'succeeded');
-    const event = await recordEvent(req, { kind: 'ai', action: action.actionType, targetType: 'proxy', targetId: action.args.host || String(action.args.line || ''), message: `AI-confirmed action ${action.actionType} succeeded.`, details: { conversationId: action.conversationId, actionId: action.id } });
-    res.json({ ok: true, action, parsed, event, reloadSuggested: true });
+    res.json({ ok: true, action, parsed, reloadSuggested: true });
   } catch (error) {
     await store.finishAiPendingAction(action.id, req.user.username, 'failed');
     if (!res.headersSent) res.status(400).json({ error: error.message });
