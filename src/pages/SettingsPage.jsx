@@ -33,8 +33,6 @@ function parseScopeText(value = '') {
 export default function SettingsPage({ settings, setSettings, canEdit, canAdmin, api, notify, refreshConfig, setStatus, theme, setTheme, accent, setAccent }) {
   const [activeSection, setActiveSection] = useState('connection');
   const [form, setForm] = useState({
-    configMode: settings.configMode || 'api',
-    caddyfilePath: settings.caddyfilePath || '',
     caddyApiUrl: settings.caddyApiUrl || 'http://127.0.0.1:2019',
     caddyApiToken: '',
     aiEnabled: Boolean(settings.aiEnabled),
@@ -73,8 +71,6 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
 
   useEffect(() => {
     setForm({
-      configMode: settings.configMode || 'api',
-      caddyfilePath: settings.caddyfilePath || '',
       caddyApiUrl: settings.caddyApiUrl || 'http://127.0.0.1:2019',
       caddyApiToken: '',
       aiEnabled: Boolean(settings.aiEnabled),
@@ -91,7 +87,7 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     });
     setClearCaddyApiSecret(false);
     setClearAiApiKey(false);
-  }, [settings.configMode, settings.caddyfilePath, settings.caddyApiUrl, settings.aiEnabled, settings.aiProvider, settings.aiBaseUrl, settings.aiModel, settings.aiAllowPrivateBaseUrl, settings.logPaths, settings.trustProxyHops, settings.allowRemoteSetup, settings.secureCookieMode, settings.allowedOrigins]);
+  }, [settings.caddyApiUrl, settings.aiEnabled, settings.aiProvider, settings.aiBaseUrl, settings.aiModel, settings.aiAllowPrivateBaseUrl, settings.logPaths, settings.trustProxyHops, settings.allowRemoteSetup, settings.secureCookieMode, settings.allowedOrigins]);
 
   useEffect(() => {
     setUpdateChannel(settings.updateChannel || 'stable');
@@ -157,8 +153,7 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
     if (localTest) {
       setSettings({
         ...settings,
-        configMode: form.configMode || 'api',
-        caddyfilePath: form.caddyfilePath,
+        configMode: 'api',
         caddyApiUrl: form.caddyApiUrl,
         aiEnabled: Boolean(form.aiEnabled),
         aiProvider: form.aiProvider,
@@ -180,8 +175,6 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
 
     try {
       const payload = {
-        configMode: form.configMode || 'api',
-        caddyfilePath: form.caddyfilePath,
         caddyApiUrl: form.caddyApiUrl,
         logPaths: nextLogPaths,
       };
@@ -399,9 +392,8 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
 
       <div className="settings-overview">
         <div><span>Role</span><b>{settings.role || 'view'}</b></div>
-        <div><span>Mode</span><b>{settings.configMode || 'api'}</b></div>
+        <div><span>Mode</span><b>Admin API</b></div>
         <div><span>Caddy API URL</span><b>{settings.caddyApiUrl || 'not set'}</b></div>
-        <div><span>Caddyfile</span><b>{settings.caddyfilePath || 'not set'}</b></div>
         <div><span>API secret</span><b>{(settings.hasCaddyApiSecret || settings.hasCaddyApiToken) ? 'configured' : 'not set'}</b></div>
         <div><span>Log paths</span><b>{configuredLogCount}</b></div>
         <div><span>Trusted proxy hops</span><b>{settings.trustProxyHops ?? 0}</b></div>
@@ -424,30 +416,7 @@ export default function SettingsPage({ settings, setSettings, canEdit, canAdmin,
             <form className="settings-form settings-card-grid" onSubmit={save}>
               <div className="settings-section-head">
                 <h3>Connection</h3>
-                <p>API mode is the default. File mode stays available when you want direct Caddyfile writes.</p>
-              </div>
-              <div className="settings-card">
-                <h4>Config source</h4>
-                <label>
-                  Config mode
-                  <select value={form.configMode} onChange={(e) => setForm({ ...form, configMode: e.target.value })} disabled={!canEdit}>
-                    <option value="api">api</option>
-                    <option value="file">file</option>
-                  </select>
-                </label>
-                <label>
-                  Caddyfile path
-                  <input value={form.caddyfilePath} onChange={(e) => setForm({ ...form, caddyfilePath: e.target.value })} readOnly={!canEdit || form.configMode === 'api'} />
-                </label>
-                <div className="toolbar">
-                  <button type="button" onClick={scanFiles} disabled={scanning}>{scanning ? 'Scanning...' : 'Scan Caddyfiles'}</button>
-                  {discovered.caddyfiles.length > 0 && (
-                    <select value="" onChange={(e) => e.target.value && setForm({ ...form, caddyfilePath: e.target.value })}>
-                      <option value="">Select discovered Caddyfile</option>
-                      {discovered.caddyfiles.map((f) => <option key={f.path} value={f.path}>{f.path}</option>)}
-                    </select>
-                  )}
-                </div>
+                <p>CaddyUI reads and applies configuration through Caddy's Admin API.</p>
               </div>
 
               <div className="settings-card">

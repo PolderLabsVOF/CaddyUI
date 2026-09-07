@@ -5,7 +5,6 @@ import pkg from '../package.json';
 import './styles.css';
 import Proxies from './pages/Proxies.jsx';
 import Middlewares from './pages/Middlewares.jsx';
-import Configuration from './pages/Configuration.jsx';
 import Logs from './pages/Logs.jsx';
 import Tls from './pages/Tls.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
@@ -45,7 +44,7 @@ const api = async (path, options = {}) => {
 
 const canEditRole = (role) => role === 'edit' || role === 'admin';
 const canAdminRole = (role) => role === 'admin';
-const PAGE_IDS = new Set(['proxies', 'middlewares', 'configuration', 'tls', 'logs', 'settings']);
+const PAGE_IDS = new Set(['proxies', 'middlewares', 'tls', 'logs', 'settings']);
 const pageFromHash = () => {
   const candidate = window.location.hash.replace(/^#\/?/, '').trim();
   return PAGE_IDS.has(candidate) ? candidate : 'proxies';
@@ -452,17 +451,6 @@ export default function App() {
         <Middlewares
           config={config}
           setConfig={setConfig}
-          canEdit={canEdit}
-          theme={theme}
-          api={api}
-          onConfigChanged={notifyConfigChangedNeedsReload}
-        />
-      )}
-      {page === 'configuration' && (
-        <Configuration
-          config={config}
-          setConfig={setConfig}
-          refresh={refreshConfig}
           canEdit={canEdit}
           theme={theme}
           api={api}
